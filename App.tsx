@@ -1,8 +1,8 @@
 
-// Build: 1.9.80
-// - Feature: Switched to EffectCards for a "Stack Slider" look.
-// - UI: Added perSlideOffset and slideShadows for depth.
-// - Fix: Adjusted container overflow to support stack visibility while maintaining layout integrity.
+// Build: 1.9.81
+// - Feature: Infinite loop enabled for Cards Stack Slider.
+// - Logic: Integrated slideToLoop for seamless navigation sync.
+// - UI: Maintained stack depth with perSlideOffset.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -282,8 +282,9 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (swiperInstance && activeStationId && displayedStations.length > 0) {
       const idx = displayedStations.findIndex(s => s.id === activeStationId);
+      // Use slideToLoop for seamless sync when loop is enabled
       if (idx !== -1 && idx !== swiperInstance.realIndex) {
-        swiperInstance.slideTo(idx);
+        swiperInstance.slideToLoop(idx);
       }
     }
   }, [activeStationId, swiperInstance, displayedStations]);
@@ -553,6 +554,7 @@ export const App: React.FC = () => {
                 if (targetStation) setActiveStationId(targetStation.id);
                 hapticImpact('light');
               }}
+              loop={displayedStations.length > 1}
               effect={'cards'}
               grabCursor={true}
               slidesPerView={1}
@@ -691,7 +693,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.80</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.81</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
