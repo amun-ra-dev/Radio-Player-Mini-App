@@ -13,8 +13,10 @@ export const useAudio = (streamUrl: string | null) => {
   const shouldBePlayingRef = useRef(false);
   
   const requestVersionRef = useRef(0);
+  // Реф для отслеживания URL, который загружен в данный момент
+  const currentLoadedUrlRef = useRef<string | null>(null);
 
-  const playAudioRef = useRef<(() => void) | null>(null);
+  const playAudioRef = useRef<((overrideUrl?: string) => void) | null>(null);
 
   const handleAudioError = useCallback((_e?: any) => {
     if (!shouldBePlayingRef.current) return;
@@ -31,6 +33,7 @@ export const useAudio = (streamUrl: string | null) => {
     } else {
       setStatus('error');
       shouldBePlayingRef.current = false;
+      currentLoadedUrlRef.current = null;
     }
   }, []);
 
@@ -38,7 +41,14 @@ export const useAudio = (streamUrl: string | null) => {
     const urlToPlay = overrideUrl || streamUrl;
     if (!urlToPlay || !audioRef.current) return;
 
+    // ПРОВЕРКА: Если этот URL уже загружен и мы находимся в состоянии воспроизведения/загрузки, не прерываем
+    if (urlToPlay === currentLoadedUrlRef.current && (status === 'playing' || status === 'loading')) {
+      console.log('Stream URL is the same and already active, skipping re-init');
+      return;
+    }
+
     const currentVersion = ++requestVersionRef.current;
+    currentLoadedUrlRef.current = urlToPlay;
     
     if (hlsRef.current) {
       try { hlsRef.current.destroy(); } catch (e) { console.warn("Error destroying HLS instance:", e); }
@@ -53,17 +63,9 @@ export const useAudio = (streamUrl: string | null) => {
 
     const useHls = (url: string) => {
         const lowerUrl = url.toLowerCase();
-        // HLS should be used specifically for .m3u8 playlists.
         if (lowerUrl.includes('.m3u8')) return true;
-
-        // Standard direct audio files (MP3, AAC, OGG, etc.) or raw streams identified by extension
-        // are best handled by the browser's native audio engine.
-        // Hls.js expects fragmented streams (TS or fMP4).
         const isStandardAudioFile = /\.(mp3|aac|ogg|wav|m4a|flac)$/.test(lowerUrl);
         if (isStandardAudioFile) return false;
-
-        // If no common extension, assume it's a raw radio stream (Icecast/Shoutcast)
-        // and try native playback first unless specified otherwise.
         return false;
     };
 
@@ -100,7 +102,6 @@ export const useAudio = (streamUrl: string | null) => {
           }
         });
       } else {
-        // For native playback (MP3/AAC streams)
         audio.src = urlToPlay;
         if (currentVersion !== requestVersionRef.current) return;
         try {
@@ -117,12 +118,13 @@ export const useAudio = (streamUrl: string | null) => {
         handleAudioError();
       }
     }
-  }, [streamUrl, volume, handleAudioError]);
+  }, [streamUrl, volume, handleAudioError, status]);
 
   playAudioRef.current = playAudio;
 
   const stopAndCleanup = useCallback(() => {
     requestVersionRef.current++;
+    currentLoadedUrlRef.current = null;
     if (hlsRef.current) {
       try { hlsRef.current.destroy(); } catch (e) { console.warn("Error destroying HLS instance:", e); }
       hlsRef.current = null;
@@ -141,7 +143,7 @@ export const useAudio = (streamUrl: string | null) => {
       audio.crossOrigin = "anonymous";
       
       audio.onplaying = () => { setStatus('playing'); retryCountRef.current = 0; };
-      audio.onpause = () => { setStatus(prev => prev === 'loading' ? 'loading' : 'paused'); };
+      audio.onpause = () => { setStatus(prev => (prev === 'loading' || shouldBePlayingRef.current) ? 'loading' : 'paused'); };
       audio.onwaiting = () => { if (shouldBePlayingRef.current) setStatus('loading'); };
       audio.onerror = handleAudioError;
       
@@ -178,9 +180,10 @@ export const useAudio = (streamUrl: string | null) => {
   useEffect(() => {
     if (streamUrl) {
       if (shouldBePlayingRef.current) {
+        // Вызываем playAudio, которая сама проверит, нужно ли переподключаться
         playAudioRef.current?.();
-      } else {
-        setStatus('idle');
+      } else if (status === 'idle') {
+        // Если станция просто выбрана, но не играет, не делаем ничего лишнего
       }
     }
   }, [streamUrl]);
