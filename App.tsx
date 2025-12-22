@@ -1,7 +1,7 @@
 
-// Build: 1.9.90
-// - UI: Removed tags from mini-covers in the playlist for a cleaner look.
-// - UI: Maintained perfect alignment for sleep timer custom input and OK button.
+// Build: 1.9.93
+// - UI: Fixed layout spacing: Carousel is no longer pressed against the header.
+// - UI: Switched to justify-around for balanced vertical distribution.
 // - Performance: Preserved Swiper Creative effect and Telegram integration.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -444,6 +444,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col overflow-hidden text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212]" style={{ height: 'var(--tg-viewport-height, 100vh)' }}>
+      {/* Header (Head) */}
       <div className="flex items-center justify-between px-6 bg-white dark:bg-[#1f1f1f] shadow-md z-10 shrink-0 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)', paddingBottom: '12px' }}>
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setShowAboutModal(true)}>
           <Logo className="w-8 h-8 text-blue-600 dark:text-blue-400" />
@@ -462,7 +463,8 @@ export const App: React.FC = () => {
         </div>
       </div>
 
-      <main className="flex-1 flex flex-col items-center justify-center gap-6 overflow-hidden relative">
+      <main className="flex-1 flex flex-col items-center justify-around py-4 overflow-hidden relative">
+        {/* Carousel (Карусель) */}
         <div className="relative w-[340px] aspect-square shrink-0">
           {hasStations ? (
             <Swiper
@@ -524,10 +526,13 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        <div className="w-full flex-1 flex flex-col justify-center">
+        {/* Info & Controls Area */}
+        <div className="w-full">
           <motion.div className="max-w-[360px] w-full flex flex-col items-center mx-auto" drag="y" dragConstraints={{ top: 0, bottom: 0 }} onDragEnd={(_, info) => info.offset.y < -50 && setShowPlaylist(true)}>
-            <div className="w-full flex flex-col items-center gap-8 py-4 px-6">
-              <div className="text-center w-full px-4 min-h-[70px] flex flex-col justify-center">
+            <div className="w-full flex flex-col items-center gap-6 py-4 px-6">
+              
+              {/* Station Name and Status (Название станции и статус) */}
+              <div className="text-center w-full px-4 min-h-[60px] flex flex-col justify-center">
                 <AnimatePresence mode="wait">
                   <motion.div key={currentStation?.id || 'none'} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
                     <h2 className="text-3xl font-black mb-1 truncate leading-tight">{currentStation?.name || 'Пусто'}</h2>
@@ -535,15 +540,22 @@ export const App: React.FC = () => {
                   </motion.div>
                 </AnimatePresence>
               </div>
-              <div className="w-full max-w-[360px] flex items-center justify-around">
+
+              {/* Volume (Громкость) */}
+              <div className="w-full max-w-[300px] flex flex-col gap-3">
+                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
+              </div>
+
+              {/* Controls (Кнопки управления) */}
+              <div className="w-full max-w-[360px] flex items-center justify-around mt-2">
                 <RippleButton onClick={() => navigateStation('prev')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 hover:text-blue-600 active:scale-90' : 'text-gray-300 opacity-20 pointer-events-none'}`}><Icons.Prev /></RippleButton>
                 <RippleButton onClick={() => canPlay && togglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ${canPlay ? 'bg-blue-600 text-white shadow-blue-600/30' : 'bg-gray-200 dark:bg-gray-800 text-gray-400'}`} disabled={!canPlay}>{status === 'playing' || status === 'loading' ? <Icons.Pause /> : <Icons.Play />}</RippleButton>
                 <RippleButton onClick={() => navigateStation('next')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 hover:text-blue-600 active:scale-90' : 'text-gray-300 opacity-20 pointer-events-none'}`}><Icons.Next /></RippleButton>
               </div>
-              <div className="w-full max-w-[300px] flex flex-col gap-3">
-                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
-              </div>
+
             </div>
+            
+            {/* Playlist handle */}
             <div className="flex flex-col items-center gap-2 pt-2 text-gray-300 dark:text-gray-600 cursor-grab opacity-50 hover:opacity-100 transition-opacity w-full">
               <div className="w-10 h-1 rounded-full bg-current mx-auto" />
               <span className="text-[9px] uppercase font-bold tracking-widest text-center">Плейлист</span>
@@ -552,6 +564,7 @@ export const App: React.FC = () => {
         </div>
       </main>
 
+      {/* Modals and other UI components remain unchanged */}
       <AnimatePresence>
         {showPlaylist && (
           <>
@@ -591,7 +604,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.90</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.93</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
