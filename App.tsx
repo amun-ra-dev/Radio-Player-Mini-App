@@ -1,8 +1,8 @@
 
-// Build: 1.9.95
-// - Fix: Audio persistence during station reordering.
-// - Optimization: Reorder logic strictly maintains activeStationId.
-// - Performance: Swiper sync disabled during active drag to prevent glitchy jumps.
+// Build: 1.9.99
+// - Fix: Removed mini-equalizer from the main carousel cover as requested.
+// - Logic: Snap-back to playing station after reorder preserved.
+// - UX: Equalizer remains in the playlist list for better navigation.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -95,6 +95,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
 interface ReorderItemProps {
   station: Station;
   isActive: boolean;
+  isPlaying: boolean;
   isFavorite: boolean;
   status: PlayerStatus;
   onSelect: () => void;
@@ -105,7 +106,7 @@ interface ReorderItemProps {
 }
 
 const ReorderableStationItem: React.FC<ReorderItemProps> = ({
-  station, isActive, isFavorite, status, onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact
+  station, isActive, isPlaying, isFavorite, status, onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   return (
@@ -123,7 +124,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl shadow-sm bg-gray-100 dark:bg-gray-800 pointer-events-none">
         <StationCover station={station} className="w-full h-full" showTags={false} />
         <AnimatePresence>
-          {isActive && (status === 'playing' || status === 'loading') && (
+          {isPlaying && (status === 'playing' || status === 'loading') && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><MiniEqualizer /></motion.div>
           )}
         </AnimatePresence>
@@ -169,7 +170,10 @@ export const App: React.FC = () => {
   });
 
   const [onlyFavoritesMode, setOnlyFavoritesMode] = useState<boolean>(() => localStorage.getItem('radio_only_favorites') === 'true');
+  
   const [activeStationId, setActiveStationId] = useState<string>(() => localStorage.getItem('radio_last_active') || '');
+  const [playingStationId, setPlayingStationId] = useState<string>(() => localStorage.getItem('radio_last_playing') || '');
+
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [playlistFilter, setPlaylistFilter] = useState<'all' | 'favorites'>('all');
   const [showEditor, setShowEditor] = useState(false);
@@ -211,6 +215,7 @@ export const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('radio_favorites', JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem('radio_only_favorites', String(onlyFavoritesMode)); }, [onlyFavoritesMode]);
   useEffect(() => { localStorage.setItem('radio_last_active', activeStationId); }, [activeStationId]);
+  useEffect(() => { localStorage.setItem('radio_last_playing', playingStationId); }, [playingStationId]);
   useEffect(() => { if (!snackbar) return; const timer = setTimeout(() => setSnackbar(null), 3000); return () => clearTimeout(timer); }, [snackbar]);
 
   const hasStations = stations.length > 0;
@@ -229,16 +234,29 @@ export const App: React.FC = () => {
     return stations;
   }, [playlistFilter, stations, favorites]);
 
-  const currentStation = useMemo<Station | null>(() => {
+  const activeStation = useMemo<Station | null>(() => {
     if (!displayedStations.length) return null;
-    // Всегда ищем именно по ID, чтобы избежать переключений при смене порядка
-    const found = displayedStations.find(s => s.id === activeStationId);
-    if (found) return found;
-    // Если по ID не нашли (например, станция удалена или мы вышли из избранного), берем первую
-    return displayedStations[0] || null;
+    return displayedStations.find(s => s.id === activeStationId) || displayedStations[0] || null;
   }, [displayedStations, activeStationId]);
 
-  const { status, volume, setVolume, togglePlay, play, stop } = useAudio(currentStation?.streamUrl || null);
+  const playingStation = useMemo<Station | null>(() => {
+    if (!stations.length) return null;
+    return stations.find(s => s.id === playingStationId) || null;
+  }, [stations, playingStationId]);
+
+  const { status, volume, setVolume, togglePlay: baseTogglePlay, play, stop } = useAudio(playingStation?.streamUrl || null);
+
+  const handleTogglePlay = useCallback(() => {
+    if (!activeStation) return;
+    
+    if (playingStationId === activeStationId && status !== 'idle') {
+      baseTogglePlay();
+    } else {
+      setPlayingStationId(activeStationId);
+      hapticImpact('medium');
+      play(activeStation.streamUrl);
+    }
+  }, [activeStationId, playingStationId, status, baseTogglePlay, activeStation, hapticImpact, play]);
 
   useEffect(() => {
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
@@ -247,12 +265,11 @@ export const App: React.FC = () => {
     }
   }, [displayedStations, activeStationId]);
 
-  // Синхронизация Swiper с активной станцией
   useEffect(() => {
-    if (swiperInstance && activeStationId && displayedStations.length > 0 && !isReorderingRef.current) {
+    if (swiperInstance && activeStationId && displayedStations.length > 0) {
       const idx = displayedStations.findIndex(s => s.id === activeStationId);
       if (idx !== -1 && idx !== swiperInstance.realIndex) {
-        swiperInstance.slideToLoop(idx, 0); // Нулевое время перехода, чтобы избежать визуальных скачков при обновлении стейта
+        swiperInstance.slideToLoop(idx, 0);
       }
     }
   }, [activeStationId, swiperInstance, displayedStations]);
@@ -301,9 +318,26 @@ export const App: React.FC = () => {
   const handleReorder = (reorderedItems: Station[]) => {
     isReorderingRef.current = true;
     const reorderedIds = new Set(reorderedItems.map(item => item.id));
-    setStations([...reorderedItems, ...stations.filter(item => !reorderedIds.has(item.id))]);
+    const newStations = [...reorderedItems, ...stations.filter(item => !reorderedIds.has(item.id))];
+    setStations(newStations);
+    
+    if (playingStationId) {
+        const displayed = !onlyFavoritesMode ? newStations : newStations.filter(s => favorites.includes(s.id));
+        const isPlayingVisible = displayed.some(s => s.id === playingStationId);
+        
+        if (isPlayingVisible) {
+            setActiveStationId(playingStationId);
+        } else if (swiperInstance) {
+            const stationAtIdx = displayed[swiperInstance.realIndex];
+            if (stationAtIdx) setActiveStationId(stationAtIdx.id);
+        }
+    } else if (swiperInstance) {
+        const displayed = !onlyFavoritesMode ? newStations : newStations.filter(s => favorites.includes(s.id));
+        const stationAtIdx = displayed[swiperInstance.realIndex];
+        if (stationAtIdx) setActiveStationId(stationAtIdx.id);
+    }
+
     hapticImpact('light');
-    // Сбрасываем флаг после обновления стейта
     setTimeout(() => { isReorderingRef.current = false; }, 50);
   };
 
@@ -318,11 +352,15 @@ export const App: React.FC = () => {
     const nextMode = !onlyFavoritesMode;
     setOnlyFavoritesMode(nextMode); hapticImpact('medium');
     setSnackbar(nextMode ? 'Избранное: ВКЛ' : 'Избранное: ВЫКЛ');
-    if (nextMode && activeStationId && !favorites.includes(activeStationId)) {
-      const first = stations.find(s => favorites.includes(s.id));
-      if (first) setActiveStationId(first.id);
+    
+    if (swiperInstance) {
+        const nextList = nextMode ? stations.filter(s => favorites.includes(s.id)) : stations;
+        const targetIdx = Math.min(swiperInstance.realIndex, nextList.length - 1);
+        if (nextList[targetIdx]) {
+            setActiveStationId(nextList[targetIdx].id);
+        }
     }
-  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, activeStationId, favorites, stations]);
+  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, activeStationId, favorites, stations, swiperInstance]);
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => {
     if (!swiperInstance) return;
@@ -333,9 +371,15 @@ export const App: React.FC = () => {
 
   const handleSelectStation = useCallback((station: Station) => {
     if (!station) return;
-    if (activeStationId === station.id) togglePlay();
-    else { setActiveStationId(station.id); play(station.streamUrl); }
-  }, [activeStationId, togglePlay, play]);
+    if (activeStationId === station.id) {
+        handleTogglePlay();
+    } else {
+        setActiveStationId(station.id);
+        setPlayingStationId(station.id);
+        hapticImpact('light');
+        play(station.streamUrl);
+    }
+  }, [activeStationId, handleTogglePlay, hapticImpact, play]);
 
   const closeAllModals = useCallback(() => {
     setShowEditor(false); setShowPlaylist(false); setShowImportModal(false); setShowConfirmModal(false);
@@ -352,7 +396,7 @@ export const App: React.FC = () => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
       switch (e.key.toLowerCase()) {
-        case ' ': e.preventDefault(); togglePlay(); break;
+        case ' ': e.preventDefault(); handleTogglePlay(); break;
         case 'arrowleft': navigateStation('prev'); break;
         case 'arrowright': navigateStation('next'); break;
         case 'arrowup': e.preventDefault(); setVolume(prev => Math.min(1, prev + 0.05)); break;
@@ -362,7 +406,7 @@ export const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, navigateStation, setVolume, volume]);
+  }, [handleTogglePlay, navigateStation, setVolume, volume]);
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -371,7 +415,8 @@ export const App: React.FC = () => {
       onConfirm: () => {
         const filtered = stations.filter(s => s.id !== id);
         setStations(filtered); setFavorites(prev => prev.filter(fid => fid !== id));
-        if (activeStationId === id) { if (filtered.length > 0) setActiveStationId(filtered[0].id); else { setActiveStationId(''); stop(); } }
+        if (playingStationId === id) { setPlayingStationId(''); stop(); }
+        if (activeStationId === id) { if (filtered.length > 0) setActiveStationId(filtered[0].id); else { setActiveStationId(''); } }
         hapticImpact('heavy'); setSnackbar('Станция удалена');
       }
     });
@@ -415,7 +460,7 @@ export const App: React.FC = () => {
   };
 
   const handleReset = () => {
-    setConfirmData({ message: 'Очистить весь плейлист?', onConfirm: () => { setStations([]); setFavorites([]); setOnlyFavoritesMode(false); setActiveStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Плейлист очищен'); } });
+    setConfirmData({ message: 'Очистить весь плейлист?', onConfirm: () => { setStations([]); setFavorites([]); setOnlyFavoritesMode(false); setActiveStationId(''); setPlayingStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Плейлист очищен'); } });
     setShowConfirmModal(true);
   };
 
@@ -424,7 +469,7 @@ export const App: React.FC = () => {
       message: 'Добавить стандартный список станций?',
       onConfirm: () => {
         setStations(DEFAULT_STATIONS);
-        if (DEFAULT_STATIONS.length > 0) { setActiveStationId(DEFAULT_STATIONS[0].id); play(DEFAULT_STATIONS[0].streamUrl); }
+        if (DEFAULT_STATIONS.length > 0) { setActiveStationId(DEFAULT_STATIONS[0].id); setPlayingStationId(DEFAULT_STATIONS[0].id); }
         setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); hapticNotification('success');
       }
     });
@@ -440,7 +485,10 @@ export const App: React.FC = () => {
     const tagsStr = formData.get('tags') as string;
     const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
     if (!name || !url) return;
-    if (editingStation) { setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s)); setEditingStation(null); setSnackbar('Обновлено'); }
+    if (editingStation) { 
+        setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s)); 
+        setEditingStation(null); setSnackbar('Обновлено'); 
+    }
     else {
       const id = Math.random().toString(36).substr(2, 9);
       const s: Station = { id, name, streamUrl: url, coverUrl: coverUrl || `https://picsum.photos/400/400?random=${Math.random()}`, tags, addedAt: Date.now() };
@@ -451,7 +499,7 @@ export const App: React.FC = () => {
 
   useEffect(() => { if (showEditor) { setEditorPreviewUrl(editingStation?.coverUrl || ''); setEditorName(editingStation?.name || ''); setEditorTags(editingStation?.tags?.join(', ') || ''); } }, [showEditor, editingStation]);
 
-  const canPlay = Boolean(currentStation?.streamUrl);
+  const canPlay = Boolean(activeStation?.streamUrl);
 
   return (
     <div className="flex flex-col overflow-hidden text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212]" style={{ height: 'var(--tg-viewport-height, 100vh)' }}>
@@ -481,10 +529,14 @@ export const App: React.FC = () => {
             <Swiper
               onSwiper={setSwiperInstance}
               onSlideChange={(swiper) => {
-                // Игнорируем события свайпера, пока идет реордеринг в плейлисте
                 if (isReorderingRef.current) return;
                 const targetStation = displayedStations[swiper.realIndex];
-                if (targetStation) setActiveStationId(targetStation.id);
+                if (targetStation) {
+                    setActiveStationId(targetStation.id);
+                    if (status === 'playing' || status === 'loading') {
+                        setPlayingStationId(targetStation.id);
+                    }
+                }
                 hapticImpact('light');
               }}
               loop={displayedStations.length > 1}
@@ -511,13 +563,14 @@ export const App: React.FC = () => {
             >
               {displayedStations.map((station) => (
                 <SwiperSlide key={station.id} className="w-full h-full flex justify-center">
-                  <div className={`relative w-full aspect-square rounded-[2.5rem] shadow-2xl overflow-hidden bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`} onClick={() => canPlay && togglePlay()}>
+                  <div className={`relative w-full aspect-square rounded-[2.5rem] shadow-2xl overflow-hidden bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`} onClick={() => canPlay && handleTogglePlay()}>
                     <StationCover station={station} className="w-full h-full" />
                     <div className="absolute bottom-6 right-6 z-20" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
                       <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
                         {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
                       </RippleButton>
                     </div>
+                    {/* Visual playing indicator removed from main cover as per user request */}
                   </div>
                 </SwiperSlide>
               ))}
@@ -544,31 +597,34 @@ export const App: React.FC = () => {
           <motion.div className="max-w-[360px] w-full flex flex-col items-center mx-auto" drag="y" dragConstraints={{ top: 0, bottom: 0 }} onDragEnd={(_, info) => info.offset.y < -50 && setShowPlaylist(true)}>
             <div className="w-full flex flex-col items-center gap-6 py-4 px-6">
               
-              {/* Station Name and Status */}
               <div className="text-center w-full px-4 min-h-[60px] flex flex-col justify-center">
                 <AnimatePresence mode="wait">
-                  <motion.div key={currentStation?.id || 'none'} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
-                    <h2 className="text-3xl font-black mb-1 truncate leading-tight">{currentStation?.name || 'Пусто'}</h2>
-                    <p className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black">{!currentStation ? 'Выберите источник' : (status === 'playing' ? 'В эфире' : status === 'loading' ? 'Загрузка...' : 'Пауза')}</p>
+                  <motion.div key={activeStation?.id || 'none'} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
+                    <h2 className="text-3xl font-black mb-1 truncate leading-tight">{activeStation?.name || 'Пусто'}</h2>
+                    <p className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black">
+                        {!activeStation ? 'Выберите источник' : 
+                         (playingStationId === activeStationId && status === 'playing' ? 'В эфире' : 
+                          playingStationId === activeStationId && status === 'loading' ? 'Загрузка...' : 
+                          'Пауза')}
+                    </p>
                   </motion.div>
                 </AnimatePresence>
               </div>
 
-              {/* Volume */}
               <div className="w-full max-w-[300px] flex flex-col gap-3">
                 <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
               </div>
 
-              {/* Controls */}
               <div className="w-full max-w-[360px] flex items-center justify-around mt-2">
                 <RippleButton onClick={() => navigateStation('prev')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 hover:text-blue-600 active:scale-90' : 'text-gray-300 opacity-20 pointer-events-none'}`}><Icons.Prev /></RippleButton>
-                <RippleButton onClick={() => canPlay && togglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ${canPlay ? 'bg-blue-600 text-white shadow-blue-600/30' : 'bg-gray-200 dark:bg-gray-800 text-gray-400'}`} disabled={!canPlay}>{status === 'playing' || status === 'loading' ? <Icons.Pause /> : <Icons.Play />}</RippleButton>
+                <RippleButton onClick={() => canPlay && handleTogglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ${canPlay ? 'bg-blue-600 text-white shadow-blue-600/30' : 'bg-gray-200 dark:bg-gray-800 text-gray-400'}`} disabled={!canPlay}>
+                    {(playingStationId === activeStationId) && (status === 'playing' || status === 'loading') ? <Icons.Pause /> : <Icons.Play />}
+                </RippleButton>
                 <RippleButton onClick={() => navigateStation('next')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 hover:text-blue-600 active:scale-90' : 'text-gray-300 opacity-20 pointer-events-none'}`}><Icons.Next /></RippleButton>
               </div>
 
             </div>
             
-            {/* Playlist handle */}
             <div className="flex flex-col items-center gap-2 pt-2 text-gray-300 dark:text-gray-600 cursor-grab opacity-50 hover:opacity-100 transition-opacity w-full">
               <div className="w-10 h-1 rounded-full bg-current mx-auto" />
               <span className="text-[9px] uppercase font-bold tracking-widest text-center">Плейлист</span>
@@ -593,7 +649,21 @@ export const App: React.FC = () => {
               <div ref={listRef} className="flex-1 overflow-y-auto px-4 flex flex-col overscroll-contain" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
                 {stationsInPlaylist.length > 0 ? (
                   <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-1">
-                    {stationsInPlaylist.map(s => <ReorderableStationItem key={s.id} station={s} isActive={activeStationId === s.id} isFavorite={favorites.includes(s.id)} status={status} hapticImpact={hapticImpact} onSelect={() => handleSelectStation(s)} onToggleFavorite={(e) => toggleFavorite(s.id, e)} onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }} onDelete={(e) => handleDelete(s.id, e)} />)}
+                    {stationsInPlaylist.map(s => (
+                        <ReorderableStationItem 
+                            key={s.id} 
+                            station={s} 
+                            isActive={activeStationId === s.id} 
+                            isPlaying={playingStationId === s.id}
+                            isFavorite={favorites.includes(s.id)} 
+                            status={status} 
+                            hapticImpact={hapticImpact} 
+                            onSelect={() => handleSelectStation(s)} 
+                            onToggleFavorite={(e) => toggleFavorite(s.id, e)} 
+                            onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }} 
+                            onDelete={(e) => handleDelete(s.id, e)} 
+                        />
+                    ))}
                   </ReorderGroup>
                 ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-8"><h3 className="text-lg font-black text-gray-400">{playlistFilter === 'favorites' ? 'Нет избранных' : 'Плейлист пуст'}</h3></div>}
                 <div className="mt-6 flex flex-col gap-4 mb-safe">
@@ -610,7 +680,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
       
-      {/* Rest of modals (unchanged) */}
       <AnimatePresence>
         {showAboutModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -618,7 +687,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.95</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.99</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>

@@ -38,7 +38,13 @@ export const useAudio = (streamUrl: string | null) => {
 
   const playAudio = useCallback(async (overrideUrl?: string) => {
     const urlToPlay = overrideUrl || streamUrl;
-    if (!urlToPlay || !audioRef.current) return;
+    if (!urlToPlay || !audioRef.current) {
+        if (!urlToPlay) setStatus('idle');
+        return;
+    }
+
+    // Принудительно ставим флаг, что мы ДОЛЖНЫ играть
+    shouldBePlayingRef.current = true;
 
     // СТРОГАЯ ПРОВЕРКА: Если этот URL уже играет или загружается, НЕ трогаем его
     if (urlToPlay === currentLoadedUrlRef.current && (status === 'playing' || status === 'loading')) {
@@ -54,7 +60,6 @@ export const useAudio = (streamUrl: string | null) => {
     }
 
     setStatus('loading');
-    shouldBePlayingRef.current = true;
     
     const audio = audioRef.current;
     audio.volume = volume;
@@ -96,7 +101,6 @@ export const useAudio = (streamUrl: string | null) => {
           }
         });
       } else {
-        // Для нативного воспроизведения меняем src только если он реально другой
         if (audio.src !== urlToPlay) {
           audio.src = urlToPlay;
         }
@@ -136,7 +140,7 @@ export const useAudio = (streamUrl: string | null) => {
   useEffect(() => {
     if (!audioRef.current) {
       const audio = new Audio();
-      audio.preload = "none"; // Не грузим заранее, пока не попросят
+      audio.preload = "none";
       audio.crossOrigin = "anonymous";
       
       audio.onplaying = () => { setStatus('playing'); retryCountRef.current = 0; };
@@ -150,13 +154,13 @@ export const useAudio = (streamUrl: string | null) => {
     return () => { stopAndCleanup(); };
   }, [handleAudioError, stopAndCleanup]);
 
-  // Следим за изменением URL, но игнорируем, если он тот же самый
   const lastEffectUrlRef = useRef<string | null>(null);
   useEffect(() => {
     if (streamUrl && streamUrl !== lastEffectUrlRef.current) {
       lastEffectUrlRef.current = streamUrl;
+      // Если URL сменился и мы уже в режиме "играть", запускаем новый поток
       if (shouldBePlayingRef.current) {
-        playAudioRef.current?.();
+        playAudioRef.current?.(streamUrl);
       }
     } else if (!streamUrl) {
       lastEffectUrlRef.current = null;
@@ -169,11 +173,10 @@ export const useAudio = (streamUrl: string | null) => {
     }
   }, [volume]);
 
-  // Fix: Added missing togglePlay and refactored stop as useCallback for use as dependency
   const stop = useCallback(() => {
     shouldBePlayingRef.current = false;
     stopAndCleanup();
-    setStatus('idle');
+    setStatus('paused');
   }, [stopAndCleanup]);
 
   const togglePlay = useCallback(() => {
