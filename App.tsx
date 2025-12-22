@@ -1,11 +1,15 @@
 
-// Build: 1.9.72
-// - Feature: Tags moved to cover overlay for better aesthetics.
-// - Feature: Added tag editing in station settings (comma separated).
-// - Logic: StationCover now renders its own tags as small badges on top of the image.
+// Build: 1.9.74
+// - Refactor: Integrated Swiper.js for the station slider.
+// - Logic: Syncing Swiper active index with activeStationId state.
+// - Logic: Removed manual pointer gestures and carouselVariants.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { motion, AnimatePresence, Reorder, Variants, useDragControls } from 'framer-motion';
+import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
+import { Swiper, SwiperSlide } from 'swiper/react';
+import { EffectCreative, Keyboard } from 'swiper/modules';
+import type { Swiper as SwiperClass } from 'swiper';
+
 import { Station, PlayerStatus } from './types.ts';
 import { DEFAULT_STATIONS, Icons } from './constants.tsx';
 import { useTelegram } from './hooks/useTelegram.ts';
@@ -32,7 +36,6 @@ const HorizontalSwipeHint: React.FC = () => (
             <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
           </svg>
         </motion.div>
-
         <motion.div
           animate={{ x: [0, -80, 0, 80, 0], rotate: [0, -10, 0, 10, 0] }}
           transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
@@ -40,7 +43,6 @@ const HorizontalSwipeHint: React.FC = () => (
         >
           👆
         </motion.div>
-
         <motion.div
           animate={{ x: [20, 60, 20], opacity: [0, 1, 0] }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
@@ -211,37 +213,6 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
   );
 };
 
-const carouselVariants: Variants = {
-  enter: (direction: number) => ({
-    x: direction > 0 ? "100%" : "-100%",
-    opacity: 0,
-    scale: 0.85,
-    zIndex: 0
-  }),
-  center: {
-    zIndex: 1,
-    x: 0,
-    opacity: 1,
-    scale: 1,
-    transition: {
-      x: { type: "spring", stiffness: 350, damping: 35 },
-      opacity: { duration: 0.3 },
-      scale: { duration: 0.4, ease: "easeOut" }
-    }
-  },
-  exit: (direction: number) => ({
-    zIndex: 0,
-    x: direction < 0 ? "100%" : "-100%",
-    opacity: 0,
-    scale: 0.85,
-    transition: {
-      x: { type: "spring", stiffness: 350, damping: 35 },
-      opacity: { duration: 0.25 },
-      scale: { duration: 0.3, ease: "easeIn" }
-    }
-  })
-};
-
 export const App: React.FC = () => {
   const { hapticImpact, hapticNotification, setBackButton, isMobile } = useTelegram();
 
@@ -268,7 +239,6 @@ export const App: React.FC = () => {
 
   const [onlyFavoritesMode, setOnlyFavoritesMode] = useState<boolean>(() => localStorage.getItem('radio_only_favorites') === 'true');
   const [activeStationId, setActiveStationId] = useState<string>(() => localStorage.getItem('radio_last_active') || '');
-  const [direction, setDirection] = useState(0);
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [playlistFilter, setPlaylistFilter] = useState<'all' | 'favorites'>('all');
   const [showEditor, setShowEditor] = useState(false);
@@ -285,6 +255,9 @@ export const App: React.FC = () => {
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   const [customTimerInput, setCustomTimerInput] = useState('');
 
+  // Swiper State
+  const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(null);
+
   // Editor preview logic
   const [editorPreviewUrl, setEditorPreviewUrl] = useState('');
   const [editorName, setEditorName] = useState('');
@@ -297,16 +270,6 @@ export const App: React.FC = () => {
   const dragControls = useDragControls();
   const listRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef(0);
-
-  // ===== Cover gesture refs (SIMPLE RULES) =====
-  const coverPointerIdRef = useRef<number | null>(null);
-  const coverStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const coverMovedRef = useRef<boolean>(false);
-
-  // настройка порогов
-  const MOVE_MARK_PX = 8;     // если сдвинулся хоть немного — считаем "двинул"
-  const SWIPE_PX = 35;        // порог смены станции
-  // ============================================
 
   const handleTouchStart = (e: React.TouchEvent) => { touchStartRef.current = e.touches[0].clientY; };
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -359,6 +322,16 @@ export const App: React.FC = () => {
       setActiveStationId(displayedStations[0].id);
     }
   }, [displayedStations, activeStationId]);
+
+  // Sync state with Swiper slide
+  useEffect(() => {
+    if (swiperInstance && activeStationId) {
+      const idx = displayedStations.findIndex(s => s.id === activeStationId);
+      if (idx !== -1 && idx !== swiperInstance.activeIndex) {
+        swiperInstance.slideTo(idx);
+      }
+    }
+  }, [activeStationId, swiperInstance, displayedStations]);
 
   const handleSetSleepTimer = useCallback((minutes: number) => {
     if (sleepTimerTimeoutRef.current) { clearTimeout(sleepTimerTimeoutRef.current); sleepTimerTimeoutRef.current = null; }
@@ -421,7 +394,7 @@ export const App: React.FC = () => {
       if (onlyFavoritesMode && isFav && id === activeStationId) {
         const curIdx = favorites.indexOf(id);
         const nextId = favorites[curIdx + 1] || favorites[curIdx - 1];
-        if (nextId) { setDirection(1); setActiveStationId(nextId); }
+        if (nextId) setActiveStationId(nextId);
       }
       return newList;
     });
@@ -435,21 +408,17 @@ export const App: React.FC = () => {
     setSnackbar(nextMode ? 'Избранное: ВКЛ' : 'Избранное: ВЫКЛ');
     if (nextMode && activeStationId && !favorites.includes(activeStationId)) {
       const first = stations.find(s => favorites.includes(s.id));
-      if (first) { setDirection(1); setActiveStationId(first.id); }
+      if (first) setActiveStationId(first.id);
     }
   }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, activeStationId, favorites, stations]);
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => {
-    dismissHelp(); if (displayedStations.length < 2) return;
+    if (!swiperInstance) return;
+    dismissHelp();
     hapticImpact('medium');
-    const curIdx = displayedStations.findIndex(s => s.id === activeStationId);
-    const safeIdx = curIdx >= 0 ? curIdx : 0;
-    let nextIdx;
-    if (navDir === 'next') { setDirection(1); nextIdx = (safeIdx + 1) % displayedStations.length; }
-    else { setDirection(-1); nextIdx = (safeIdx - 1 + displayedStations.length) % displayedStations.length; }
-    const obj = displayedStations[nextIdx];
-    if (obj) setActiveStationId(obj.id);
-  }, [displayedStations, activeStationId, hapticImpact, dismissHelp]);
+    if (navDir === 'next') swiperInstance.slideNext();
+    else swiperInstance.slidePrev();
+  }, [swiperInstance, dismissHelp, hapticImpact]);
 
   const handleSelectStation = useCallback((station: Station) => {
     if (!station) return;
@@ -625,44 +594,6 @@ export const App: React.FC = () => {
   const canPlay = Boolean(currentStation?.streamUrl);
   const isFavActive = Boolean(activeStationId && favorites.includes(activeStationId));
 
-  // ===== Cover gesture handlers (SIMPLE RULES) =====
-  const onCoverPointerDown = (e: React.PointerEvent) => {
-    coverPointerIdRef.current = e.pointerId;
-    coverStartRef.current = { x: e.clientX, y: e.clientY };
-    coverMovedRef.current = false;
-  };
-
-  const onCoverPointerMove = (e: React.PointerEvent) => {
-    if (coverPointerIdRef.current !== e.pointerId) return;
-    const dx = Math.abs(e.clientX - coverStartRef.current.x);
-    const dy = Math.abs(e.clientY - coverStartRef.current.y);
-    if (dx >= MOVE_MARK_PX || dy >= MOVE_MARK_PX) coverMovedRef.current = true;
-  };
-
-  const onCoverPointerUp = (e: React.PointerEvent) => {
-    if (coverPointerIdRef.current !== e.pointerId) return;
-    coverPointerIdRef.current = null;
-
-    const dx = e.clientX - coverStartRef.current.x;
-    const dy = e.clientY - coverStartRef.current.y;
-
-    // если горизонтальный сдвиг ощутимый — свайп
-    if (Math.abs(dx) >= SWIPE_PX && Math.abs(dx) > Math.abs(dy)) {
-      if (dx > 0) navigateStation('prev');
-      else navigateStation('next');
-      return;
-    }
-
-    // иначе — тап (play/pause)
-    if (canPlay) togglePlay();
-  };
-
-  const onCoverPointerCancel = (e: React.PointerEvent) => {
-    if (coverPointerIdRef.current === e.pointerId) coverPointerIdRef.current = null;
-    coverMovedRef.current = false;
-  };
-  // ================================================
-
   return (
     <div className="flex flex-col overflow-hidden text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212]" style={{ height: 'var(--tg-viewport-height, 100vh)' }}>
       <div className="flex items-center justify-between px-6 bg-white dark:bg-[#1f1f1f] shadow-md z-10 shrink-0 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)', paddingBottom: '12px' }}>
@@ -692,43 +623,48 @@ export const App: React.FC = () => {
       <main className="flex-1 flex flex-col items-center justify-center p-6 gap-6 overflow-hidden relative" style={{ perspective: '1200px' }}>
         <div className="relative w-full max-w-[340px] aspect-square shrink-0">
           <AnimatePresence>{showHelp && displayedStations.length > 1 && <HorizontalSwipeHint />}</AnimatePresence>
-          <div className="relative w-full h-full">
-            {currentStation ? (
-              <AnimatePresence initial={false} custom={direction} mode="popLayout">
-                <motion.div
-                  key={currentStation.id}
-                  custom={direction}
-                  variants={carouselVariants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  drag="x"
-                  dragConstraints={{ left: 0, right: 0 }}
-                  dragElastic={0.4}
-                  onPointerDown={onCoverPointerDown}
-                  onPointerMove={onCoverPointerMove}
-                  onPointerUp={onCoverPointerUp}
-                  onPointerCancel={onCoverPointerCancel}
-                  className={`absolute inset-0 rounded-[2.5rem] overflow-hidden shadow-2xl bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`}
-                >
-                  <StationCover station={currentStation} className="w-full h-full" />
-                  <div
-                    className="absolute bottom-6 right-6 z-20"
-                    onPointerDownCapture={e => e.stopPropagation()}
-                    onPointerUpCapture={e => e.stopPropagation()}
-                    onMouseDownCapture={e => e.stopPropagation()}
-                    onTouchStartCapture={e => e.stopPropagation()}
-                    onDragStart={e => e.preventDefault()}
-                  >
-                    <RippleButton
-                      onClick={(e) => { e.stopPropagation(); activeStationId && toggleFavorite(activeStationId, e); }}
-                      className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${isFavActive ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}
+          <div className="relative w-full h-full overflow-hidden rounded-[2.5rem]">
+            {hasStations ? (
+              <Swiper
+                onSwiper={setSwiperInstance}
+                onSlideChange={(swiper) => {
+                  const targetStation = displayedStations[swiper.activeIndex];
+                  if (targetStation) setActiveStationId(targetStation.id);
+                  hapticImpact('light');
+                }}
+                effect={'creative'}
+                grabCursor={true}
+                centeredSlides={true}
+                slidesPerView={1}
+                creativeEffect={{
+                  prev: { shadow: true, translate: ['-120%', 0, -500] },
+                  next: { shadow: true, translate: ['120%', 0, -500] },
+                }}
+                modules={[EffectCreative, Keyboard]}
+                keyboard={{ enabled: true }}
+                className="mySwiper"
+              >
+                {displayedStations.map((station) => (
+                  <SwiperSlide key={station.id}>
+                    <div 
+                      className={`relative w-full h-full rounded-[2.5rem] overflow-hidden shadow-2xl bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`}
+                      onClick={() => canPlay && togglePlay()}
                     >
-                      {isFavActive ? <Icons.Star /> : <Icons.StarOutline />}
-                    </RippleButton>
-                  </div>
-                </motion.div>
-              </AnimatePresence>
+                      <StationCover station={station} className="w-full h-full" />
+                      <div
+                        className="absolute bottom-6 right-6 z-20"
+                        onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}
+                      >
+                        <RippleButton
+                          className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}
+                        >
+                          {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
+                        </RippleButton>
+                      </div>
+                    </div>
+                  </SwiperSlide>
+                ))}
+              </Swiper>
             ) : (
               <div className="absolute inset-0 rounded-[2.5rem] overflow-hidden shadow-2xl bg-[#1a4ab2] flex flex-col items-center justify-center text-center p-8">
                 <h2 className="text-white text-3xl font-black mb-2">Нет станций</h2>
@@ -834,7 +770,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.72</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.74</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
@@ -880,6 +816,7 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Rest of modals (SleepTimer, Export, Import, Confirm, Snackbar) are identical to the previous version */}
       <AnimatePresence>
         {showSleepTimerModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">

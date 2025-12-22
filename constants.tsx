@@ -17,7 +17,7 @@ export const DEFAULT_STATIONS: Station[] = [
     name: 'MDS Station',
     streamUrl: 'https://stream03.pcradio.ru/mdsst_ru_1-hi',
     coverUrl: 'https://raw.githubusercontent.com/amun-ra-dev/pic/refs/heads/main/audiobook.jpg',
-    tags: ['audiobook', 'ambient'],
+    tags: ['audiobook'],
     addedAt: Date.now()
   },
   {
