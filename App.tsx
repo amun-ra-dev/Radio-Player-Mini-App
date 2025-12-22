@@ -1,8 +1,8 @@
 
-// Build: 1.9.93
-// - UI: Fixed layout spacing: Carousel is no longer pressed against the header.
-// - UI: Switched to justify-around for balanced vertical distribution.
-// - Performance: Preserved Swiper Creative effect and Telegram integration.
+// Build: 1.9.95
+// - Fix: Audio persistence during station reordering.
+// - Optimization: Reorder logic strictly maintains activeStationId.
+// - Performance: Swiper sync disabled during active drag to prevent glitchy jumps.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -116,8 +116,8 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       exit={{ opacity: 0, scale: 0.95 }}
       onDragStart={() => { setIsDragging(true); hapticImpact('medium'); }}
       onDragEnd={() => setIsDragging(false)}
-      whileDrag={{ scale: 1.05, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #f0f0f0)" }}
-      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-colors group relative border-2 ${isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/40 bg-white dark:bg-[#1c1c1c] border-transparent'} ${isDragging ? 'shadow-2xl' : ''} cursor-grab active:cursor-grabbing`}
+      whileDrag={{ scale: 1.02, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #f0f0f0)", boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)" }}
+      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-colors group relative border-2 ${isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/40 bg-white dark:bg-[#1c1c1c] border-transparent'} cursor-grab active:cursor-grabbing`}
       onClick={() => !isDragging && onSelect()}
     >
       <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl shadow-sm bg-gray-100 dark:bg-gray-800 pointer-events-none">
@@ -186,6 +186,7 @@ export const App: React.FC = () => {
   const [customTimerInput, setCustomTimerInput] = useState('');
 
   const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(null);
+  const isReorderingRef = useRef(false);
 
   const [editorPreviewUrl, setEditorPreviewUrl] = useState('');
   const [editorName, setEditorName] = useState('');
@@ -230,21 +231,28 @@ export const App: React.FC = () => {
 
   const currentStation = useMemo<Station | null>(() => {
     if (!displayedStations.length) return null;
-    return displayedStations.find(s => s.id === activeStationId) || displayedStations[0] || null;
+    // Всегда ищем именно по ID, чтобы избежать переключений при смене порядка
+    const found = displayedStations.find(s => s.id === activeStationId);
+    if (found) return found;
+    // Если по ID не нашли (например, станция удалена или мы вышли из избранного), берем первую
+    return displayedStations[0] || null;
   }, [displayedStations, activeStationId]);
 
   const { status, volume, setVolume, togglePlay, play, stop } = useAudio(currentStation?.streamUrl || null);
 
   useEffect(() => {
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
-    if (!activeStationId || !displayedStations.some(s => s.id === activeStationId)) { setActiveStationId(displayedStations[0].id); }
+    if (!activeStationId || !displayedStations.some(s => s.id === activeStationId)) { 
+        setActiveStationId(displayedStations[0].id); 
+    }
   }, [displayedStations, activeStationId]);
 
+  // Синхронизация Swiper с активной станцией
   useEffect(() => {
-    if (swiperInstance && activeStationId && displayedStations.length > 0) {
+    if (swiperInstance && activeStationId && displayedStations.length > 0 && !isReorderingRef.current) {
       const idx = displayedStations.findIndex(s => s.id === activeStationId);
       if (idx !== -1 && idx !== swiperInstance.realIndex) {
-        swiperInstance.slideToLoop(idx);
+        swiperInstance.slideToLoop(idx, 0); // Нулевое время перехода, чтобы избежать визуальных скачков при обновлении стейта
       }
     }
   }, [activeStationId, swiperInstance, displayedStations]);
@@ -291,9 +299,12 @@ export const App: React.FC = () => {
   };
 
   const handleReorder = (reorderedItems: Station[]) => {
+    isReorderingRef.current = true;
     const reorderedIds = new Set(reorderedItems.map(item => item.id));
     setStations([...reorderedItems, ...stations.filter(item => !reorderedIds.has(item.id))]);
     hapticImpact('light');
+    // Сбрасываем флаг после обновления стейта
+    setTimeout(() => { isReorderingRef.current = false; }, 50);
   };
 
   const toggleFavorite = useCallback((id: string, e?: React.MouseEvent) => {
@@ -470,6 +481,8 @@ export const App: React.FC = () => {
             <Swiper
               onSwiper={setSwiperInstance}
               onSlideChange={(swiper) => {
+                // Игнорируем события свайпера, пока идет реордеринг в плейлисте
+                if (isReorderingRef.current) return;
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) setActiveStationId(targetStation.id);
                 hapticImpact('light');
@@ -531,7 +544,7 @@ export const App: React.FC = () => {
           <motion.div className="max-w-[360px] w-full flex flex-col items-center mx-auto" drag="y" dragConstraints={{ top: 0, bottom: 0 }} onDragEnd={(_, info) => info.offset.y < -50 && setShowPlaylist(true)}>
             <div className="w-full flex flex-col items-center gap-6 py-4 px-6">
               
-              {/* Station Name and Status (Название станции и статус) */}
+              {/* Station Name and Status */}
               <div className="text-center w-full px-4 min-h-[60px] flex flex-col justify-center">
                 <AnimatePresence mode="wait">
                   <motion.div key={currentStation?.id || 'none'} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
@@ -541,12 +554,12 @@ export const App: React.FC = () => {
                 </AnimatePresence>
               </div>
 
-              {/* Volume (Громкость) */}
+              {/* Volume */}
               <div className="w-full max-w-[300px] flex flex-col gap-3">
                 <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
               </div>
 
-              {/* Controls (Кнопки управления) */}
+              {/* Controls */}
               <div className="w-full max-w-[360px] flex items-center justify-around mt-2">
                 <RippleButton onClick={() => navigateStation('prev')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 hover:text-blue-600 active:scale-90' : 'text-gray-300 opacity-20 pointer-events-none'}`}><Icons.Prev /></RippleButton>
                 <RippleButton onClick={() => canPlay && togglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ${canPlay ? 'bg-blue-600 text-white shadow-blue-600/30' : 'bg-gray-200 dark:bg-gray-800 text-gray-400'}`} disabled={!canPlay}>{status === 'playing' || status === 'loading' ? <Icons.Pause /> : <Icons.Play />}</RippleButton>
@@ -564,7 +577,7 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Modals and other UI components remain unchanged */}
+      {/* Modals and other UI components */}
       <AnimatePresence>
         {showPlaylist && (
           <>
@@ -596,7 +609,8 @@ export const App: React.FC = () => {
           </>
         )}
       </AnimatePresence>
-
+      
+      {/* Rest of modals (unchanged) */}
       <AnimatePresence>
         {showAboutModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -604,7 +618,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.93</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.95</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
