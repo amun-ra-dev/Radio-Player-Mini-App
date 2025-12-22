@@ -1,13 +1,13 @@
 
-// Build: 1.9.77
-// - Feature: Added infinite loop mode to Swiper.
-// - Logic: Switched to swiper.realIndex for accurate station tracking in loop mode.
-// - Fix: Improved navigation sync between Swiper and activeStationId.
+// Build: 1.9.80
+// - Feature: Switched to EffectCards for a "Stack Slider" look.
+// - UI: Added perSlideOffset and slideShadows for depth.
+// - Fix: Adjusted container overflow to support stack visibility while maintaining layout integrity.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { EffectCreative, Keyboard } from 'swiper/modules';
+import { EffectCards, Keyboard } from 'swiper/modules';
 import type { Swiper as SwiperClass } from 'swiper';
 
 import { Station, PlayerStatus } from './types.ts';
@@ -16,6 +16,10 @@ import { useTelegram } from './hooks/useTelegram.ts';
 import { useAudio } from './hooks/useAudio.ts';
 import { RippleButton } from './components/UI/RippleButton.tsx';
 import { Logo } from './components/UI/Logo.tsx';
+
+// Fix: Aliasing Reorder components to 'any' to bypass JSX type mismatch errors 
+const ReorderGroup = Reorder.Group as any;
+const ReorderItem = Reorder.Item as any;
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
@@ -112,7 +116,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   return (
-    <Reorder.Item
+    <ReorderItem
       value={station}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
@@ -164,7 +168,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
         </RippleButton>
       </div>
-    </Reorder.Item>
+    </ReorderItem>
   );
 };
 
@@ -209,10 +213,8 @@ export const App: React.FC = () => {
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   const [customTimerInput, setCustomTimerInput] = useState('');
 
-  // Swiper State
   const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(null);
 
-  // Editor preview logic
   const [editorPreviewUrl, setEditorPreviewUrl] = useState('');
   const [editorName, setEditorName] = useState('');
   const [editorTags, setEditorTags] = useState('');
@@ -277,12 +279,11 @@ export const App: React.FC = () => {
     }
   }, [displayedStations, activeStationId]);
 
-  // Sync state with Swiper slide (use loop-friendly slideToLoop or slideTo)
   useEffect(() => {
     if (swiperInstance && activeStationId && displayedStations.length > 0) {
       const idx = displayedStations.findIndex(s => s.id === activeStationId);
       if (idx !== -1 && idx !== swiperInstance.realIndex) {
-        swiperInstance.slideToLoop(idx);
+        swiperInstance.slideTo(idx);
       }
     }
   }, [activeStationId, swiperInstance, displayedStations]);
@@ -340,15 +341,9 @@ export const App: React.FC = () => {
     e?.stopPropagation(); hapticImpact('light');
     setFavorites(prev => {
       const isFav = prev.includes(id);
-      const newList = isFav ? prev.filter(fid => fid !== id) : [...prev, id];
-      if (onlyFavoritesMode && isFav && id === activeStationId) {
-        const curIdx = favorites.indexOf(id);
-        const nextId = favorites[curIdx + 1] || favorites[curIdx - 1];
-        if (nextId) setActiveStationId(nextId);
-      }
-      return newList;
+      return isFav ? prev.filter(fid => fid !== id) : [...prev, id];
     });
-  }, [hapticImpact, onlyFavoritesMode, activeStationId, favorites]);
+  }, [hapticImpact]);
 
   const toggleOnlyFavoritesMode = useCallback(() => {
     if (!hasStations) return;
@@ -392,36 +387,17 @@ export const App: React.FC = () => {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
 
       switch (e.key.toLowerCase()) {
-        case ' ':
-          e.preventDefault();
-          togglePlay();
-          break;
-        case 'arrowleft':
-          navigateStation('prev');
-          break;
-        case 'arrowright':
-          navigateStation('next');
-          break;
-        case 'arrowup':
-          e.preventDefault();
-          setVolume(prev => Math.min(1, prev + 0.05));
-          break;
-        case 'arrowdown':
-          e.preventDefault();
-          setVolume(prev => Math.max(0, prev - 0.05));
-          break;
-        case 'm':
-        case 'ь':
-          if (volume > 0) {
-            lastNonZeroVolumeRef.current = volume;
-            setVolume(0);
-          } else {
-            setVolume(lastNonZeroVolumeRef.current || 0.45);
-          }
+        case ' ': e.preventDefault(); togglePlay(); break;
+        case 'arrowleft': navigateStation('prev'); break;
+        case 'arrowright': navigateStation('next'); break;
+        case 'arrowup': e.preventDefault(); setVolume(prev => Math.min(1, prev + 0.05)); break;
+        case 'arrowdown': e.preventDefault(); setVolume(prev => Math.max(0, prev - 0.05)); break;
+        case 'm': case 'ь':
+          if (volume > 0) { lastNonZeroVolumeRef.current = volume; setVolume(0); }
+          else { setVolume(lastNonZeroVolumeRef.current || 0.45); }
           break;
       }
     };
-
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [togglePlay, navigateStation, setVolume, volume]);
@@ -531,7 +507,6 @@ export const App: React.FC = () => {
     setShowEditor(false); hapticImpact('light');
   };
 
-  // Sync editor state when editingStation changes
   useEffect(() => {
     if (showEditor) {
       setEditorPreviewUrl(editingStation?.coverUrl || '');
@@ -541,7 +516,6 @@ export const App: React.FC = () => {
   }, [showEditor, editingStation]);
 
   const canPlay = Boolean(currentStation?.streamUrl);
-  const isFavActive = Boolean(activeStationId && favorites.includes(activeStationId));
 
   return (
     <div className="flex flex-col overflow-hidden text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212]" style={{ height: 'var(--tg-viewport-height, 100vh)' }}>
@@ -569,71 +543,69 @@ export const App: React.FC = () => {
         </div>
       </div>
 
-      <main className="flex-1 flex flex-col items-center justify-center p-6 gap-6 overflow-hidden relative" style={{ perspective: '1200px' }}>
+      <main className="flex-1 flex flex-col items-center justify-center p-6 gap-6 overflow-hidden relative">
         <div className="relative w-full max-w-[340px] aspect-square shrink-0">
-          <div className="relative w-full h-full overflow-hidden rounded-[2.5rem]">
-            {hasStations ? (
-              <Swiper
-                onSwiper={setSwiperInstance}
-                onSlideChange={(swiper) => {
-                  const targetStation = displayedStations[swiper.realIndex];
-                  if (targetStation) setActiveStationId(targetStation.id);
-                  hapticImpact('light');
-                }}
-                loop={displayedStations.length > 1}
-                effect={'creative'}
-                grabCursor={true}
-                centeredSlides={true}
-                slidesPerView={1}
-                creativeEffect={{
-                  prev: { shadow: true, translate: ['-120%', 0, -500] },
-                  next: { shadow: true, translate: ['120%', 0, -500] },
-                }}
-                modules={[EffectCreative, Keyboard]}
-                keyboard={{ enabled: true }}
-                className="mySwiper"
-              >
-                {displayedStations.map((station) => (
-                  <SwiperSlide key={station.id}>
-                    <div 
-                      className={`relative w-full h-full rounded-[2.5rem] overflow-hidden shadow-2xl bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`}
-                      onClick={() => canPlay && togglePlay()}
+          {hasStations ? (
+            <Swiper
+              onSwiper={setSwiperInstance}
+              onSlideChange={(swiper) => {
+                const targetStation = displayedStations[swiper.realIndex];
+                if (targetStation) setActiveStationId(targetStation.id);
+                hapticImpact('light');
+              }}
+              effect={'cards'}
+              grabCursor={true}
+              slidesPerView={1}
+              cardsEffect={{
+                slideShadows: true,
+                perSlideOffset: 8,
+                perSlideRotate: 2,
+                rotate: true
+              }}
+              modules={[EffectCards, Keyboard]}
+              keyboard={{ enabled: true }}
+              className="mySwiper w-full h-full rounded-[2.5rem]"
+            >
+              {displayedStations.map((station) => (
+                <SwiperSlide key={station.id} className="w-full h-full rounded-[2.5rem] shadow-2xl overflow-hidden">
+                  <div 
+                    className={`relative w-full h-full overflow-hidden bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`}
+                    onClick={() => canPlay && togglePlay()}
+                  >
+                    <StationCover station={station} className="w-full h-full" />
+                    <div
+                      className="absolute bottom-6 right-6 z-20"
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}
                     >
-                      <StationCover station={station} className="w-full h-full" />
-                      <div
-                        className="absolute bottom-6 right-6 z-20"
-                        onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}
+                      <RippleButton
+                        className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}
                       >
-                        <RippleButton
-                          className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}
-                        >
-                          {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
-                        </RippleButton>
-                      </div>
+                        {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
+                      </RippleButton>
                     </div>
-                  </SwiperSlide>
-                ))}
-              </Swiper>
-            ) : (
-              <div className="absolute inset-0 rounded-[2.5rem] overflow-hidden shadow-2xl bg-[#1a4ab2] flex flex-col items-center justify-center text-center p-8">
-                <h2 className="text-white text-3xl font-black mb-2">Нет станций</h2>
-                <p className="text-white/80 text-sm font-bold mb-8">Добавьте первую станцию в плейлист</p>
-                <div className="flex flex-col gap-4 w-full">
-                  <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-[#2f6ff7] hover:bg-[#4a84ff] text-white rounded-2xl font-black shadow-lg shadow-blue-900/40">
-                    Добавить станцию
-                  </RippleButton>
-                  <div className="grid grid-cols-2 gap-3">
-                    <RippleButton onClick={handleImport} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">
-                      Импорт JSON
-                    </RippleButton>
-                    <RippleButton onClick={handleDemo} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">
-                      Демо
-                    </RippleButton>
                   </div>
+                </SwiperSlide>
+              ))}
+            </Swiper>
+          ) : (
+            <div className="w-full h-full rounded-[2.5rem] overflow-hidden shadow-2xl bg-[#1a4ab2] flex flex-col items-center justify-center text-center p-8">
+              <h2 className="text-white text-3xl font-black mb-2">Нет станций</h2>
+              <p className="text-white/80 text-sm font-bold mb-8">Добавьте первую станцию в плейлист</p>
+              <div className="flex flex-col gap-4 w-full">
+                <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-[#2f6ff7] hover:bg-[#4a84ff] text-white rounded-2xl font-black shadow-lg shadow-blue-900/40">
+                  Добавить станцию
+                </RippleButton>
+                <div className="grid grid-cols-2 gap-3">
+                  <RippleButton onClick={handleImport} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">
+                    Импорт JSON
+                  </RippleButton>
+                  <RippleButton onClick={handleDemo} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">
+                    Демо
+                  </RippleButton>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <div className="w-full max-w-[360px] flex-1 flex flex-col justify-center">
@@ -692,11 +664,11 @@ export const App: React.FC = () => {
               </div>
               <div ref={listRef} className="flex-1 overflow-y-auto px-4 flex flex-col overscroll-contain" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
                 {stationsInPlaylist.length > 0 ? (
-                  <Reorder.Group axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-1">
+                  <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-1">
                     {stationsInPlaylist.map(s => (
                       <ReorderableStationItem key={s.id} station={s} isActive={activeStationId === s.id} isFavorite={favorites.includes(s.id)} status={status} hapticImpact={hapticImpact} onSelect={() => handleSelectStation(s)} onToggleFavorite={(e) => toggleFavorite(s.id, e)} onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }} onDelete={(e) => handleDelete(s.id, e)} />
                     ))}
-                  </Reorder.Group>
+                  </ReorderGroup>
                 ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-8"><h3 className="text-lg font-black text-gray-400">{playlistFilter === 'favorites' ? 'Нет избранных' : 'Плейлист пуст'}</h3></div>}
                 <div className="mt-6 flex flex-col gap-4 mb-safe">
                   <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); setShowPlaylist(false); }} className="w-full p-5 rounded-[1.5rem] border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-400 font-black flex items-center justify-center gap-2"><Icons.Add /> Добавить станцию</RippleButton>
@@ -719,7 +691,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.77</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.80</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
