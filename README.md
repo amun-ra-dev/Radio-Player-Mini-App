@@ -1,11 +1,12 @@
-<div align="center">
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+# Radio Player Telegram Mini App
 
-  <h1>Built with AI Studio</h2>
+Это современное приложение для прослушивания радио, оптимизированное для работы внутри Telegram.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## Текущая версия: 1.9.65
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
-
-</div>
+## Основные возможности:
+- **Zero Drag Conflict (v1.9.65)**: Кнопки управления полностью изолированы от жестов перетаскивания через фазу захвата событий.
+- **Gesture Isolation**: Кнопки управления больше не инициируют перетаскивание обложки.
+- **Event Isolation**: Исправлены конфликты при нажатии на кнопки поверх анимированных зон.
+- **Smart Gesture Handling**: Исключены ложные срабатывания паузы при свайпах.
