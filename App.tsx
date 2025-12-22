@@ -1,13 +1,13 @@
 
-// Build: 1.9.81
-// - Feature: Infinite loop enabled for Cards Stack Slider.
-// - Logic: Integrated slideToLoop for seamless navigation sync.
-// - UI: Maintained stack depth with perSlideOffset.
+// Build: 1.9.82
+// - Feature: Custom Infinite Stack Slider using EffectCreative.
+// - UI: Mimicking react-native-reanimated-carousel "stack" behavior on web.
+// - UX: True bi-directional infinite looping with pre-cached slides.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { EffectCards, Keyboard } from 'swiper/modules';
+import { EffectCreative, Keyboard } from 'swiper/modules';
 import type { Swiper as SwiperClass } from 'swiper';
 
 import { Station, PlayerStatus } from './types.ts';
@@ -17,7 +17,6 @@ import { useAudio } from './hooks/useAudio.ts';
 import { RippleButton } from './components/UI/RippleButton.tsx';
 import { Logo } from './components/UI/Logo.tsx';
 
-// Fix: Aliasing Reorder components to 'any' to bypass JSX type mismatch errors 
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
@@ -58,13 +57,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
     );
   };
 
-  if (!station) {
-    return (
-      <div className={`${className} bg-blue-600 flex items-center justify-center text-white text-5xl font-black select-none`}>
-        +
-      </div>
-    );
-  }
+  if (!station) return <div className={`${className} bg-blue-600 flex items-center justify-center text-white text-5xl font-black select-none`}>+</div>;
 
   if (!station.coverUrl || hasError) {
     return (
@@ -121,16 +114,9 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      onDragStart={() => {
-        setIsDragging(true);
-        hapticImpact('medium');
-      }}
+      onDragStart={() => { setIsDragging(true); hapticImpact('medium'); }}
       onDragEnd={() => setIsDragging(false)}
-      whileDrag={{
-        scale: 1.05,
-        zIndex: 100,
-        backgroundColor: "var(--tg-theme-secondary-bg-color, #f0f0f0)"
-      }}
+      whileDrag={{ scale: 1.05, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #f0f0f0)" }}
       className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-colors group relative border-2 ${isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/40 bg-white dark:bg-[#1c1c1c] border-transparent'} ${isDragging ? 'shadow-2xl' : ''} cursor-grab active:cursor-grabbing`}
       onClick={() => !isDragging && onSelect()}
     >
@@ -138,9 +124,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         <StationCover station={station} className="w-full h-full" />
         <AnimatePresence>
           {isActive && (status === 'playing' || status === 'loading') && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <MiniEqualizer />
-            </motion.div>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><MiniEqualizer /></motion.div>
           )}
         </AnimatePresence>
       </div>
@@ -150,9 +134,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
           {station.tags && station.tags.length > 0 && (
             <div className="flex gap-1">
               {station.tags.slice(0, 2).map(tag => (
-                <span key={tag} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-md">
-                  {tag}
-                </span>
+                <span key={tag} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-md">{tag}</span>
               ))}
             </div>
           )}
@@ -177,23 +159,13 @@ export const App: React.FC = () => {
 
   const [stations, setStations] = useState<Station[]>(() => {
     const saved = localStorage.getItem('radio_stations');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch {}
-    }
+    if (saved) { try { const parsed = JSON.parse(saved); if (Array.isArray(parsed)) return parsed; } catch {} }
     return [];
   });
 
   const [favorites, setFavorites] = useState<string[]>(() => {
     const saved = localStorage.getItem('radio_favorites');
-    try {
-      const parsed = saved ? JSON.parse(saved) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
+    try { const parsed = saved ? JSON.parse(saved) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; }
   });
 
   const [onlyFavoritesMode, setOnlyFavoritesMode] = useState<boolean>(() => localStorage.getItem('radio_only_favorites') === 'true');
@@ -238,18 +210,12 @@ export const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('radio_favorites', JSON.stringify(favorites)); }, [favorites]);
   useEffect(() => { localStorage.setItem('radio_only_favorites', String(onlyFavoritesMode)); }, [onlyFavoritesMode]);
   useEffect(() => { localStorage.setItem('radio_last_active', activeStationId); }, [activeStationId]);
-  useEffect(() => {
-    if (!snackbar) return;
-    const timer = setTimeout(() => setSnackbar(null), 3000);
-    return () => clearTimeout(timer);
-  }, [snackbar]);
+  useEffect(() => { if (!snackbar) return; const timer = setTimeout(() => setSnackbar(null), 3000); return () => clearTimeout(timer); }, [snackbar]);
 
   const hasStations = stations.length > 0;
   const hasFavorites = favorites.length > 0;
 
-  useEffect(() => {
-    if (!hasFavorites && onlyFavoritesMode) setOnlyFavoritesMode(false);
-  }, [hasFavorites, onlyFavoritesMode]);
+  useEffect(() => { if (!hasFavorites && onlyFavoritesMode) setOnlyFavoritesMode(false); }, [hasFavorites, onlyFavoritesMode]);
 
   const displayedStations = useMemo(() => {
     if (!stations.length) return [];
@@ -270,19 +236,13 @@ export const App: React.FC = () => {
   const { status, volume, setVolume, togglePlay, play, stop } = useAudio(currentStation?.streamUrl || null);
 
   useEffect(() => {
-    if (!displayedStations.length) {
-      if (activeStationId) setActiveStationId('');
-      return;
-    }
-    if (!activeStationId || !displayedStations.some(s => s.id === activeStationId)) {
-      setActiveStationId(displayedStations[0].id);
-    }
+    if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
+    if (!activeStationId || !displayedStations.some(s => s.id === activeStationId)) { setActiveStationId(displayedStations[0].id); }
   }, [displayedStations, activeStationId]);
 
   useEffect(() => {
     if (swiperInstance && activeStationId && displayedStations.length > 0) {
       const idx = displayedStations.findIndex(s => s.id === activeStationId);
-      // Use slideToLoop for seamless sync when loop is enabled
       if (idx !== -1 && idx !== swiperInstance.realIndex) {
         swiperInstance.slideToLoop(idx);
       }
@@ -301,9 +261,7 @@ export const App: React.FC = () => {
         setSnackbar('Таймер сна завершен'); hapticNotification('success');
       }, minutes * 60 * 1000);
       setSnackbar(`Таймер установлен на ${minutes} минут`); hapticImpact('light');
-    } else {
-      setSleepTimerEndDate(null); setSnackbar('Таймер сна отключен');
-    }
+    } else { setSleepTimerEndDate(null); setSnackbar('Таймер сна отключен'); }
     setShowSleepTimerModal(false);
   }, [stop, hapticNotification, hapticImpact, setVolume, volume]);
 
@@ -340,10 +298,7 @@ export const App: React.FC = () => {
 
   const toggleFavorite = useCallback((id: string, e?: React.MouseEvent) => {
     e?.stopPropagation(); hapticImpact('light');
-    setFavorites(prev => {
-      const isFav = prev.includes(id);
-      return isFav ? prev.filter(fid => fid !== id) : [...prev, id];
-    });
+    setFavorites(prev => { const isFav = prev.includes(id); return isFav ? prev.filter(fid => fid !== id) : [...prev, id]; });
   }, [hapticImpact]);
 
   const toggleOnlyFavoritesMode = useCallback(() => {
@@ -381,22 +336,17 @@ export const App: React.FC = () => {
     setBackButton(isModalOpen, closeAllModals);
   }, [showEditor, showPlaylist, showImportModal, showConfirmModal, showExportModal, showSleepTimerModal, showAboutModal, setBackButton, closeAllModals]);
 
-  // Keyboard Navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-
       switch (e.key.toLowerCase()) {
         case ' ': e.preventDefault(); togglePlay(); break;
         case 'arrowleft': navigateStation('prev'); break;
         case 'arrowright': navigateStation('next'); break;
         case 'arrowup': e.preventDefault(); setVolume(prev => Math.min(1, prev + 0.05)); break;
         case 'arrowdown': e.preventDefault(); setVolume(prev => Math.max(0, prev - 0.05)); break;
-        case 'm': case 'ь':
-          if (volume > 0) { lastNonZeroVolumeRef.current = volume; setVolume(0); }
-          else { setVolume(lastNonZeroVolumeRef.current || 0.45); }
-          break;
+        case 'm': case 'ь': if (volume > 0) { lastNonZeroVolumeRef.current = volume; setVolume(0); } else { setVolume(lastNonZeroVolumeRef.current || 0.45); } break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -410,10 +360,7 @@ export const App: React.FC = () => {
       onConfirm: () => {
         const filtered = stations.filter(s => s.id !== id);
         setStations(filtered); setFavorites(prev => prev.filter(fid => fid !== id));
-        if (activeStationId === id) {
-          if (filtered.length > 0) setActiveStationId(filtered[0].id);
-          else { setActiveStationId(''); stop(); }
-        }
+        if (activeStationId === id) { if (filtered.length > 0) setActiveStationId(filtered[0].id); else { setActiveStationId(''); stop(); } }
         hapticImpact('heavy'); setSnackbar('Станция удалена');
       }
     });
@@ -425,8 +372,7 @@ export const App: React.FC = () => {
     if (type === 'favorites' && list.length === 0) { hapticNotification('warning'); setSnackbar('Нет избранного для экспорта'); return; }
     const json = list.map(s => ({ id: s.id, name: s.name, url: s.streamUrl, coverUrl: s.coverUrl, tags: s.tags }));
     const text = `🤖 @mdsradibot Station List:\n\n\`\`\`json\n${JSON.stringify(json, null, 2)}\n\`\`\``;
-    navigator.clipboard.writeText(text).then(() => { hapticNotification('success'); setSnackbar(`Список скопирован!`); })
-      .catch(() => { hapticNotification('error'); setSnackbar('Ошибка копирования'); });
+    navigator.clipboard.writeText(text).then(() => { hapticNotification('success'); setSnackbar(`Список скопирован!`); }).catch(() => { hapticNotification('error'); setSnackbar('Ошибка копирования'); });
     setShowExportModal(false);
   };
 
@@ -454,18 +400,11 @@ export const App: React.FC = () => {
   };
 
   const handleImport = async () => {
-    try {
-      const text = await navigator.clipboard.readText();
-      if (text && (text.includes('[') || text.includes('{'))) processImportText(text);
-      else setShowImportModal(true);
-    } catch (e) { setShowImportModal(true); }
+    try { const text = await navigator.clipboard.readText(); if (text && (text.includes('[') || text.includes('{'))) processImportText(text); else setShowImportModal(true); } catch (e) { setShowImportModal(true); }
   };
 
   const handleReset = () => {
-    setConfirmData({
-      message: 'Очистить весь плейлист?',
-      onConfirm: () => { setStations([]); setFavorites([]); setOnlyFavoritesMode(false); setActiveStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Плейлист очищен'); }
-    });
+    setConfirmData({ message: 'Очистить весь плейлист?', onConfirm: () => { setStations([]); setFavorites([]); setOnlyFavoritesMode(false); setActiveStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Плейлист очищен'); } });
     setShowConfirmModal(true);
   };
 
@@ -474,12 +413,8 @@ export const App: React.FC = () => {
       message: 'Добавить стандартный список станций?',
       onConfirm: () => {
         setStations(DEFAULT_STATIONS);
-        if (DEFAULT_STATIONS.length > 0) {
-          setActiveStationId(DEFAULT_STATIONS[0].id);
-          play(DEFAULT_STATIONS[0].streamUrl);
-        }
-        setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`);
-        hapticNotification('success');
+        if (DEFAULT_STATIONS.length > 0) { setActiveStationId(DEFAULT_STATIONS[0].id); play(DEFAULT_STATIONS[0].streamUrl); }
+        setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); hapticNotification('success');
       }
     });
     setShowConfirmModal(true);
@@ -493,28 +428,17 @@ export const App: React.FC = () => {
     const coverUrl = formData.get('coverUrl') as string;
     const tagsStr = formData.get('tags') as string;
     const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
-
     if (!name || !url) return;
-    if (editingStation) {
-      setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s));
-      setEditingStation(null); setSnackbar('Обновлено');
-    } else {
+    if (editingStation) { setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s)); setEditingStation(null); setSnackbar('Обновлено'); }
+    else {
       const id = Math.random().toString(36).substr(2, 9);
       const s: Station = { id, name, streamUrl: url, coverUrl: coverUrl || `https://picsum.photos/400/400?random=${Math.random()}`, tags, addedAt: Date.now() };
-      setStations(prev => [...prev, s]);
-      if (!activeStationId) setActiveStationId(id);
-      setSnackbar('Добавлено');
+      setStations(prev => [...prev, s]); if (!activeStationId) setActiveStationId(id); setSnackbar('Добавлено');
     }
     setShowEditor(false); hapticImpact('light');
   };
 
-  useEffect(() => {
-    if (showEditor) {
-      setEditorPreviewUrl(editingStation?.coverUrl || '');
-      setEditorName(editingStation?.name || '');
-      setEditorTags(editingStation?.tags?.join(', ') || '');
-    }
-  }, [showEditor, editingStation]);
+  useEffect(() => { if (showEditor) { setEditorPreviewUrl(editingStation?.coverUrl || ''); setEditorName(editingStation?.name || ''); setEditorTags(editingStation?.tags?.join(', ') || ''); } }, [showEditor, editingStation]);
 
   const canPlay = Boolean(currentStation?.streamUrl);
 
@@ -526,18 +450,12 @@ export const App: React.FC = () => {
           <h1 className="text-2xl font-black tracking-tighter leading-none">Radio Player</h1>
         </div>
         <div className="flex items-center gap-1">
-          <RippleButton onClick={toggleOnlyFavoritesMode} disabled={!hasStations} className={`w-[38px] h-[38px] flex items-center justify-center rounded-full transition-all duration-300 ${!hasStations ? 'opacity-20 pointer-events-none' : onlyFavoritesMode ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500 scale-110' : 'text-gray-400'}`}>
-            <Icons.Star />
-          </RippleButton>
+          <RippleButton onClick={toggleOnlyFavoritesMode} disabled={!hasStations} className={`w-[38px] h-[38px] flex items-center justify-center rounded-full transition-all duration-300 ${!hasStations ? 'opacity-20 pointer-events-none' : onlyFavoritesMode ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500 scale-110' : 'text-gray-400'}`}><Icons.Star /></RippleButton>
           <motion.button layout disabled={!hasStations} onClick={() => setShowSleepTimerModal(true)} className={`ripple h-[38px] rounded-full relative flex items-center justify-center transition-all ${!hasStations ? 'w-[38px] opacity-20 pointer-events-none' : (sleepTimerEndDate ? 'bg-blue-600 dark:bg-blue-500 text-white px-4' : 'w-[38px] text-gray-400')}`} transition={{ type: 'spring', stiffness: 500, damping: 30 }}>
             <AnimatePresence mode="popLayout" initial={false}>
               {sleepTimerEndDate ? (
-                <motion.span key="time" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className="font-black text-sm leading-none whitespace-nowrap">
-                  {timeRemaining ? `${Math.ceil((sleepTimerEndDate - Date.now()) / 60000)}m` : '...'}
-                </motion.span>
-              ) : (
-                <motion.div key="icon" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}><Icons.Timer /></motion.div>
-              )}
+                <motion.span key="time" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className="font-black text-sm leading-none whitespace-nowrap">{timeRemaining ? `${Math.ceil((sleepTimerEndDate - Date.now()) / 60000)}m` : '...'}</motion.span>
+              ) : <motion.div key="icon" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}><Icons.Timer /></motion.div>}
             </AnimatePresence>
           </motion.button>
           <RippleButton onClick={() => setShowPlaylist(true)} className="w-[38px] h-[38px] flex items-center justify-center rounded-full text-gray-400"><Icons.List /></RippleButton>
@@ -555,33 +473,33 @@ export const App: React.FC = () => {
                 hapticImpact('light');
               }}
               loop={displayedStations.length > 1}
-              effect={'cards'}
+              effect={'creative'}
               grabCursor={true}
               slidesPerView={1}
-              cardsEffect={{
-                slideShadows: true,
-                perSlideOffset: 8,
-                perSlideRotate: 2,
-                rotate: true
+              creativeEffect={{
+                limitProgress: 3,
+                perspective: true,
+                prev: {
+                  translate: ['-120%', 0, 0],
+                  rotate: [0, 0, -20],
+                  opacity: 0,
+                },
+                next: {
+                  translate: ['12px', 0, -100],
+                  scale: 0.9,
+                  opacity: 0.6,
+                },
               }}
-              modules={[EffectCards, Keyboard]}
+              modules={[EffectCreative, Keyboard]}
               keyboard={{ enabled: true }}
-              className="mySwiper w-full h-full rounded-[2.5rem]"
+              className="mySwiper w-full h-full rounded-[2.5rem] !overflow-visible"
             >
               {displayedStations.map((station) => (
                 <SwiperSlide key={station.id} className="w-full h-full rounded-[2.5rem] shadow-2xl overflow-hidden">
-                  <div 
-                    className={`relative w-full h-full overflow-hidden bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`}
-                    onClick={() => canPlay && togglePlay()}
-                  >
+                  <div className={`relative w-full h-full overflow-hidden bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`} onClick={() => canPlay && togglePlay()}>
                     <StationCover station={station} className="w-full h-full" />
-                    <div
-                      className="absolute bottom-6 right-6 z-20"
-                      onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}
-                    >
-                      <RippleButton
-                        className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}
-                      >
+                    <div className="absolute bottom-6 right-6 z-20" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
+                      <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
                         {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
                       </RippleButton>
                     </div>
@@ -594,16 +512,10 @@ export const App: React.FC = () => {
               <h2 className="text-white text-3xl font-black mb-2">Нет станций</h2>
               <p className="text-white/80 text-sm font-bold mb-8">Добавьте первую станцию в плейлист</p>
               <div className="flex flex-col gap-4 w-full">
-                <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-[#2f6ff7] hover:bg-[#4a84ff] text-white rounded-2xl font-black shadow-lg shadow-blue-900/40">
-                  Добавить станцию
-                </RippleButton>
+                <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-[#2f6ff7] hover:bg-[#4a84ff] text-white rounded-2xl font-black shadow-lg shadow-blue-900/40">Добавить станцию</RippleButton>
                 <div className="grid grid-cols-2 gap-3">
-                  <RippleButton onClick={handleImport} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">
-                    Импорт JSON
-                  </RippleButton>
-                  <RippleButton onClick={handleDemo} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">
-                    Демо
-                  </RippleButton>
+                  <RippleButton onClick={handleImport} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">Импорт JSON</RippleButton>
+                  <RippleButton onClick={handleDemo} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">Демо</RippleButton>
                 </div>
               </div>
             </div>
@@ -642,21 +554,7 @@ export const App: React.FC = () => {
         {showPlaylist && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-30 backdrop-blur-sm" onClick={closeAllModals} />
-            <motion.div 
-              drag="y" 
-              dragListener={false} 
-              dragControls={dragControls} 
-              dragDirectionLock 
-              dragConstraints={{ top: 0, bottom: 0 }} 
-              dragElastic={{ top: 0, bottom: 1 }} 
-              dragMomentum={false} 
-              onDragEnd={(_, info) => (info.offset.y > 100 || info.velocity.y > 500) && setShowPlaylist(false)} 
-              initial={{ y: '100%' }} 
-              animate={{ y: 0 }} 
-              exit={{ y: '100%' }} 
-              transition={{ type: 'spring', bounce: 0, duration: 0.4 }}
-              className="fixed bottom-0 left-0 right-0 h-[88vh] bg-white dark:bg-[#1f1f1f] rounded-t-[3rem] z-40 flex flex-col shadow-2xl overflow-hidden pb-10"
-            >
+            <motion.div drag="y" dragListener={false} dragControls={dragControls} dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 1 }} dragMomentum={false} onDragEnd={(_, info) => (info.offset.y > 100 || info.velocity.y > 500) && setShowPlaylist(false)} initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.4 }} className="fixed bottom-0 left-0 right-0 h-[88vh] bg-white dark:bg-[#1f1f1f] rounded-t-[3rem] z-40 flex flex-col shadow-2xl overflow-hidden pb-10">
               <div className="w-full flex flex-col items-center pt-5 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing" onPointerDown={(e) => dragControls.start(e)}><div className="w-16 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full mb-3" /></div>
               <div className="px-4 pb-2">
                 <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-2xl p-1">
@@ -667,9 +565,7 @@ export const App: React.FC = () => {
               <div ref={listRef} className="flex-1 overflow-y-auto px-4 flex flex-col overscroll-contain" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
                 {stationsInPlaylist.length > 0 ? (
                   <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-1">
-                    {stationsInPlaylist.map(s => (
-                      <ReorderableStationItem key={s.id} station={s} isActive={activeStationId === s.id} isFavorite={favorites.includes(s.id)} status={status} hapticImpact={hapticImpact} onSelect={() => handleSelectStation(s)} onToggleFavorite={(e) => toggleFavorite(s.id, e)} onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }} onDelete={(e) => handleDelete(s.id, e)} />
-                    ))}
+                    {stationsInPlaylist.map(s => <ReorderableStationItem key={s.id} station={s} isActive={activeStationId === s.id} isFavorite={favorites.includes(s.id)} status={status} hapticImpact={hapticImpact} onSelect={() => handleSelectStation(s)} onToggleFavorite={(e) => toggleFavorite(s.id, e)} onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }} onDelete={(e) => handleDelete(s.id, e)} />)}
                   </ReorderGroup>
                 ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-8"><h3 className="text-lg font-black text-gray-400">{playlistFilter === 'favorites' ? 'Нет избранных' : 'Плейлист пуст'}</h3></div>}
                 <div className="mt-6 flex flex-col gap-4 mb-safe">
@@ -693,7 +589,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.81</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.82</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
@@ -746,9 +642,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl">
               <h3 className="text-2xl font-black mb-4">Таймер сна</h3>
               {timeRemaining && <div className="text-center font-black text-2xl text-blue-600 mb-6">{timeRemaining}</div>}
-              <div className="grid grid-cols-2 gap-2 mb-6">
-                {[15, 30, 45, 60].map(m => <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-3 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold">{m} мин</RippleButton>)}
-              </div>
+              <div className="grid grid-cols-2 gap-2 mb-6">{[15, 30, 45, 60].map(m => <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-3 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold">{m} мин</RippleButton>)}</div>
               <form onSubmit={handleCustomTimerSubmit} className="flex gap-2">
                 <input type="number" value={customTimerInput} onChange={(e) => setCustomTimerInput(e.target.value)} placeholder="Минут..." className="flex-1 bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold" />
                 <RippleButton type="submit" className="px-6 bg-blue-600 text-white rounded-xl font-black">OK</RippleButton>
