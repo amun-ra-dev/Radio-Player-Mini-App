@@ -1,7 +1,8 @@
 
-// Build: 1.9.76
-// - Feature: Removed HorizontalSwipeHint (onboarding instruction).
-// - Logic: Removed showHelp state and dismissHelp logic.
+// Build: 1.9.77
+// - Feature: Added infinite loop mode to Swiper.
+// - Logic: Switched to swiper.realIndex for accurate station tracking in loop mode.
+// - Fix: Improved navigation sync between Swiper and activeStationId.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -276,12 +277,12 @@ export const App: React.FC = () => {
     }
   }, [displayedStations, activeStationId]);
 
-  // Sync state with Swiper slide
+  // Sync state with Swiper slide (use loop-friendly slideToLoop or slideTo)
   useEffect(() => {
-    if (swiperInstance && activeStationId) {
+    if (swiperInstance && activeStationId && displayedStations.length > 0) {
       const idx = displayedStations.findIndex(s => s.id === activeStationId);
-      if (idx !== -1 && idx !== swiperInstance.activeIndex) {
-        swiperInstance.slideTo(idx);
+      if (idx !== -1 && idx !== swiperInstance.realIndex) {
+        swiperInstance.slideToLoop(idx);
       }
     }
   }, [activeStationId, swiperInstance, displayedStations]);
@@ -575,10 +576,11 @@ export const App: React.FC = () => {
               <Swiper
                 onSwiper={setSwiperInstance}
                 onSlideChange={(swiper) => {
-                  const targetStation = displayedStations[swiper.activeIndex];
+                  const targetStation = displayedStations[swiper.realIndex];
                   if (targetStation) setActiveStationId(targetStation.id);
                   hapticImpact('light');
                 }}
+                loop={displayedStations.length > 1}
                 effect={'creative'}
                 grabCursor={true}
                 centeredSlides={true}
@@ -717,7 +719,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.76</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.77</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
