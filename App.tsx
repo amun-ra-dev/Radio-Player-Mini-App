@@ -1,8 +1,7 @@
 
-// Build: 1.9.74
-// - Refactor: Integrated Swiper.js for the station slider.
-// - Logic: Syncing Swiper active index with activeStationId state.
-// - Logic: Removed manual pointer gestures and carouselVariants.
+// Build: 1.9.76
+// - Feature: Removed HorizontalSwipeHint (onboarding instruction).
+// - Logic: Removed showHelp state and dismissHelp logic.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -16,51 +15,6 @@ import { useTelegram } from './hooks/useTelegram.ts';
 import { useAudio } from './hooks/useAudio.ts';
 import { RippleButton } from './components/UI/RippleButton.tsx';
 import { Logo } from './components/UI/Logo.tsx';
-
-// Animated Gesture Component: Horizontal Swipe
-const HorizontalSwipeHint: React.FC = () => (
-  <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    exit={{ opacity: 0 }}
-    className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none rounded-[2.5rem] bg-blue-600/10 backdrop-blur-[2px]"
-  >
-    <div className="relative w-full h-full flex flex-col items-center justify-center gap-6">
-      <div className="relative flex items-center justify-center w-full h-32">
-        <motion.div
-          animate={{ x: [-20, -60, -20], opacity: [0, 1, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute left-12 text-blue-600/50"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 rotate-180">
-            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
-          </svg>
-        </motion.div>
-        <motion.div
-          animate={{ x: [0, -80, 0, 80, 0], rotate: [0, -10, 0, 10, 0] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-          className="text-7xl drop-shadow-2xl z-10"
-        >
-          👆
-        </motion.div>
-        <motion.div
-          animate={{ x: [20, 60, 20], opacity: [0, 1, 0] }}
-          transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute right-12 text-blue-600/50"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
-            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
-          </svg>
-        </motion.div>
-      </div>
-      <div className="flex flex-col items-center gap-2">
-        <span className="bg-blue-600 text-white text-[11px] font-black uppercase px-5 py-2 rounded-full shadow-lg tracking-wider">
-          Листайте станции
-        </span>
-      </div>
-    </div>
-  </motion.div>
-);
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
@@ -247,7 +201,6 @@ export const App: React.FC = () => {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmData, setConfirmData] = useState<{ message: string; onConfirm: () => void } | null>(null);
-  const [showHelp, setShowHelp] = useState(() => localStorage.getItem('radio_onboarding_seen') !== 'true');
   const [editingStation, setEditingStation] = useState<Station | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [showSleepTimerModal, setShowSleepTimerModal] = useState(false);
@@ -376,10 +329,6 @@ export const App: React.FC = () => {
     else { setSnackbar('Введите корректное время (1-999 мин)'); hapticNotification('error'); }
   };
 
-  const dismissHelp = useCallback(() => {
-    if (showHelp) { setShowHelp(false); localStorage.setItem('radio_onboarding_seen', 'true'); }
-  }, [showHelp]);
-
   const handleReorder = (reorderedItems: Station[]) => {
     const reorderedIds = new Set(reorderedItems.map(item => item.id));
     setStations([...reorderedItems, ...stations.filter(item => !reorderedIds.has(item.id))]);
@@ -414,11 +363,10 @@ export const App: React.FC = () => {
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => {
     if (!swiperInstance) return;
-    dismissHelp();
     hapticImpact('medium');
     if (navDir === 'next') swiperInstance.slideNext();
     else swiperInstance.slidePrev();
-  }, [swiperInstance, dismissHelp, hapticImpact]);
+  }, [swiperInstance, hapticImpact]);
 
   const handleSelectStation = useCallback((station: Station) => {
     if (!station) return;
@@ -622,7 +570,6 @@ export const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col items-center justify-center p-6 gap-6 overflow-hidden relative" style={{ perspective: '1200px' }}>
         <div className="relative w-full max-w-[340px] aspect-square shrink-0">
-          <AnimatePresence>{showHelp && displayedStations.length > 1 && <HorizontalSwipeHint />}</AnimatePresence>
           <div className="relative w-full h-full overflow-hidden rounded-[2.5rem]">
             {hasStations ? (
               <Swiper
@@ -770,7 +717,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.74</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.76</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
@@ -816,7 +763,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Rest of modals (SleepTimer, Export, Import, Confirm, Snackbar) are identical to the previous version */}
       <AnimatePresence>
         {showSleepTimerModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">

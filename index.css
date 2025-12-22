@@ -1,0 +1,12 @@
+
+/* Base styles to fix build error */
+:root {
+  --swiper-theme-color: #2563eb;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
