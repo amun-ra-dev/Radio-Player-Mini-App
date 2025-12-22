@@ -1,7 +1,8 @@
 
-// Build: 1.9.70
-// - Fix: Removed bounce/rebound effect when playlist appears.
-// - Logic: Added transition={{ type: 'spring', bounce: 0, duration: 0.4 }} to the playlist container.
+// Build: 1.9.72
+// - Feature: Tags moved to cover overlay for better aesthetics.
+// - Feature: Added tag editing in station settings (comma separated).
+// - Logic: StationCover now renders its own tags as small badges on top of the image.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, Variants, useDragControls } from 'framer-motion';
@@ -83,6 +84,19 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
     }
   }, [station?.id, station?.coverUrl]);
 
+  const renderTags = () => {
+    if (!station?.tags || station.tags.length === 0) return null;
+    return (
+      <div className="absolute top-4 left-4 z-20 flex flex-wrap gap-1.5 max-w-[80%] pointer-events-none">
+        {station.tags.map(tag => (
+          <span key={tag} className="text-[8px] font-black uppercase px-2 py-1 bg-black/40 backdrop-blur-md text-white rounded-lg border border-white/10 shadow-sm">
+            {tag}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   if (!station) {
     return (
       <div className={`${className} bg-blue-600 flex items-center justify-center text-white text-5xl font-black select-none`}>
@@ -94,6 +108,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
   if (!station.coverUrl || hasError) {
     return (
       <div className={`${className} bg-blue-600 flex items-center justify-center text-white text-7xl font-black select-none`}>
+        {renderTags()}
         {station.name?.charAt(0)?.toUpperCase?.() || 'R'}
       </div>
     );
@@ -101,6 +116,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
 
   return (
     <div className={`${className} relative bg-gray-200 dark:bg-gray-800 overflow-hidden`}>
+      {renderTags()}
       <motion.img
         ref={imgRef}
         key={`${station.id}-${station.coverUrl}`}
@@ -169,7 +185,18 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       </div>
       <div className="flex-1 min-w-0 pointer-events-none">
         <p className={`font-bold text-base truncate leading-tight ${isActive ? 'text-blue-600 dark:text-blue-400' : ''}`}>{station.name}</p>
-        <p className="text-[9px] opacity-30 truncate uppercase tracking-wider font-bold mt-0.5">{station.streamUrl}</p>
+        <div className="flex items-center gap-1.5 mt-0.5">
+          {station.tags && station.tags.length > 0 && (
+            <div className="flex gap-1">
+              {station.tags.slice(0, 2).map(tag => (
+                <span key={tag} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-md">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
+          <p className="text-[9px] opacity-20 truncate uppercase tracking-wider font-bold">{station.streamUrl}</p>
+        </div>
       </div>
       <div className="flex gap-0.5 ml-auto pr-1">
         <RippleButton onClick={onToggleFavorite} className={`p-2.5 rounded-xl ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700'}`}>
@@ -261,6 +288,7 @@ export const App: React.FC = () => {
   // Editor preview logic
   const [editorPreviewUrl, setEditorPreviewUrl] = useState('');
   const [editorName, setEditorName] = useState('');
+  const [editorTags, setEditorTags] = useState('');
 
   const sleepTimerTimeoutRef = useRef<number | null>(null);
   const originalVolumeRef = useRef<number>(0.45);
@@ -500,7 +528,7 @@ export const App: React.FC = () => {
   const handleExport = (type: 'all' | 'favorites') => {
     const list = type === 'all' ? stations : stations.filter(s => favorites.includes(s.id));
     if (type === 'favorites' && list.length === 0) { hapticNotification('warning'); setSnackbar('Нет избранного для экспорта'); return; }
-    const json = list.map(s => ({ id: s.id, name: s.name, url: s.streamUrl, coverUrl: s.coverUrl }));
+    const json = list.map(s => ({ id: s.id, name: s.name, url: s.streamUrl, coverUrl: s.coverUrl, tags: s.tags }));
     const text = `🤖 @mdsradibot Station List:\n\n\`\`\`json\n${JSON.stringify(json, null, 2)}\n\`\`\``;
     navigator.clipboard.writeText(text).then(() => { hapticNotification('success'); setSnackbar(`Список скопирован!`); })
       .catch(() => { hapticNotification('error'); setSnackbar('Ошибка копирования'); });
@@ -516,7 +544,7 @@ export const App: React.FC = () => {
       const list = Array.isArray(parsed) ? parsed : [parsed];
       const normalized = list.filter((s: any) => s.name && (s.url || s.streamUrl)).map((s: any) => ({
         id: s.id || Math.random().toString(36).substr(2, 9),
-        name: s.name, streamUrl: s.url || s.streamUrl, coverUrl: s.coverUrl || '', addedAt: Date.now()
+        name: s.name, streamUrl: s.url || s.streamUrl, coverUrl: s.coverUrl || '', tags: s.tags || [], addedAt: Date.now()
       }));
       if (normalized.length === 0) { setSnackbar('Нет станций'); return; }
       setStations(prev => {
@@ -568,13 +596,16 @@ export const App: React.FC = () => {
     const name = formData.get('name') as string;
     const url = formData.get('url') as string;
     const coverUrl = formData.get('coverUrl') as string;
+    const tagsStr = formData.get('tags') as string;
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+
     if (!name || !url) return;
     if (editingStation) {
-      setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl } : s));
+      setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s));
       setEditingStation(null); setSnackbar('Обновлено');
     } else {
       const id = Math.random().toString(36).substr(2, 9);
-      const s: Station = { id, name, streamUrl: url, coverUrl: coverUrl || `https://picsum.photos/400/400?random=${Math.random()}`, addedAt: Date.now() };
+      const s: Station = { id, name, streamUrl: url, coverUrl: coverUrl || `https://picsum.photos/400/400?random=${Math.random()}`, tags, addedAt: Date.now() };
       setStations(prev => [...prev, s]);
       if (!activeStationId) setActiveStationId(id);
       setSnackbar('Добавлено');
@@ -587,6 +618,7 @@ export const App: React.FC = () => {
     if (showEditor) {
       setEditorPreviewUrl(editingStation?.coverUrl || '');
       setEditorName(editingStation?.name || '');
+      setEditorTags(editingStation?.tags?.join(', ') || '');
     }
   }, [showEditor, editingStation]);
 
@@ -673,7 +705,6 @@ export const App: React.FC = () => {
                   drag="x"
                   dragConstraints={{ left: 0, right: 0 }}
                   dragElastic={0.4}
-                  // ВАЖНО: никаких onTap / onDragEnd-логик. Только pointerDown/Up
                   onPointerDown={onCoverPointerDown}
                   onPointerMove={onCoverPointerMove}
                   onPointerUp={onCoverPointerUp}
@@ -803,7 +834,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.70</p>
+              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.72</p>
               <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
             </motion.div>
@@ -813,19 +844,32 @@ export const App: React.FC = () => {
 
       <AnimatePresence>
         {showEditor && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 overflow-y-auto">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
-            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl">
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl my-auto">
               <div className="flex justify-between items-start mb-6">
                 <h3 className="text-2xl font-black">{editingStation ? 'Настройки' : 'Новая станция'}</h3>
                 <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg bg-gray-100 dark:bg-gray-800 shrink-0">
-                  <StationCover station={{ name: editorName, coverUrl: editorPreviewUrl } as any} className="w-full h-full" />
+                  <StationCover station={{ name: editorName, coverUrl: editorPreviewUrl, tags: editorTags.split(',').map(t => t.trim()).filter(Boolean) } as any} className="w-full h-full" />
                 </div>
               </div>
-              <form onSubmit={addOrUpdateStation} className="flex flex-col gap-4">
-                <input name="name" required value={editorName} onChange={(e) => setEditorName(e.target.value)} placeholder="Название" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold" />
-                <input name="url" type="url" required defaultValue={editingStation?.streamUrl || ''} placeholder="URL потока" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold" />
-                <input name="coverUrl" type="url" value={editorPreviewUrl} onChange={(e) => setEditorPreviewUrl(e.target.value)} placeholder="URL обложки (опционально)" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold" />
+              <form onSubmit={addOrUpdateStation} className="flex flex-col gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Название</label>
+                  <input name="name" required value={editorName} onChange={(e) => setEditorName(e.target.value)} placeholder="Название" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-400 ml-2">URL потока</label>
+                  <input name="url" type="url" required defaultValue={editingStation?.streamUrl || ''} placeholder="URL потока" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-400 ml-2">URL обложки</label>
+                  <input name="coverUrl" type="url" value={editorPreviewUrl} onChange={(e) => setEditorPreviewUrl(e.target.value)} placeholder="URL обложки (опционально)" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold text-sm" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase text-gray-400 ml-2">Теги (через запятую)</label>
+                  <input name="tags" value={editorTags} onChange={(e) => setEditorTags(e.target.value)} placeholder="rock, 90s, chill..." className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold text-sm" />
+                </div>
                 <div className="flex gap-3 mt-4">
                   <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-gray-800 rounded-2xl font-black">Отмена</RippleButton>
                   <RippleButton type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black">Сохранить</RippleButton>
