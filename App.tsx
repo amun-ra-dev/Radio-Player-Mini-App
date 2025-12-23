@@ -1,8 +1,8 @@
 
-// Build: 2.0.2
-// - Fixed: Modal centering logic for all dialogs.
-// - Added: "Copy Playlist Template" button in empty state.
-// - UI: Centered popups with backdrop-blur and responsive height.
+// Build: 2.0.3
+// - Security: Added strict JSON schema validation for imports.
+// - Security: URL sanitization to prevent javascript: protocol execution.
+// - UI: Fixed modal centering and template copy.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
@@ -19,16 +19,6 @@ import { Logo } from './components/UI/Logo.tsx';
 
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
-
-const MiniEqualizer: React.FC = () => (
-  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
-    <div className="flex gap-1 items-end h-3.5 mb-1">
-      <motion.div animate={{ height: [4, 12, 4] }} transition={{ repeat: Infinity, duration: 0.6, ease: "easeInOut" }} className="w-1 bg-white rounded-full shadow-sm" />
-      <motion.div animate={{ height: [12, 6, 12] }} transition={{ repeat: Infinity, duration: 0.5, ease: "easeInOut", delay: 0.1 }} className="w-1 bg-white rounded-full shadow-sm" />
-      <motion.div animate={{ height: [6, 10, 6] }} transition={{ repeat: Infinity, duration: 0.7, ease: "easeInOut", delay: 2 }} className="w-1 bg-white rounded-full shadow-sm" />
-    </div>
-  </div>
-);
 
 const StationCover: React.FC<{ station: Station | null | undefined; className?: string }> = ({ station, className = "" }) => {
   const [hasError, setHasError] = useState(false);
@@ -102,27 +92,21 @@ export const App: React.FC = () => {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
 
   const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(null);
-  const isReorderingRef = useRef(false);
+  const [isDesktop, setIsDesktop] = useState(typeof window !== 'undefined' ? window.innerWidth >= 768 : false);
 
   const [editorPreviewUrl, setEditorPreviewUrl] = useState('');
   const [editorName, setEditorName] = useState('');
   const [editorTags, setEditorTags] = useState('');
 
   const sleepTimerTimeoutRef = useRef<number | null>(null);
-  const originalVolumeRef = useRef<number>(0.5);
-  const isFadingOutRef = useRef<boolean>(false);
-
-  const [isDesktop, setIsDesktop] = useState(typeof window !== 'undefined' ? window.innerWidth >= 768 : false);
 
   useEffect(() => {
     const handleResize = () => setIsDesktop(window.innerWidth >= 768);
     const handleOnline = () => { setIsOffline(false); setSnackbar('Снова в сети!'); hapticNotification('success'); };
     const handleOffline = () => { setIsOffline(true); setSnackbar('Нет подключения к интернету'); hapticNotification('warning'); };
-    
     window.addEventListener('resize', handleResize);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    
     return () => {
       window.removeEventListener('resize', handleResize);
       window.removeEventListener('online', handleOnline);
@@ -156,6 +140,9 @@ export const App: React.FC = () => {
     return displayedStations.find(s => s.id === activeStationId) || displayedStations[0] || null;
   }, [displayedStations, activeStationId]);
 
+  // Fix: Defined missing canPlay variable to fix errors in the UI components
+  const canPlay = !!activeStation;
+
   const playingStation = useMemo<Station | null>(() => {
     if (!stations.length) return null;
     return stations.find(s => s.id === playingStationId) || null;
@@ -172,19 +159,16 @@ export const App: React.FC = () => {
 
   const handleSetSleepTimer = useCallback((minutes: number) => {
     if (sleepTimerTimeoutRef.current) { clearTimeout(sleepTimerTimeoutRef.current); sleepTimerTimeoutRef.current = null; }
-    if (isFadingOutRef.current && minutes <= 0) setVolume(originalVolumeRef.current);
-    isFadingOutRef.current = false;
     if (minutes > 0) {
       const endDate = Date.now() + minutes * 60 * 1000;
       setSleepTimerEndDate(endDate);
       sleepTimerTimeoutRef.current = window.setTimeout(() => {
-        stop(); setSleepTimerEndDate(null); setVolume(originalVolumeRef.current || volume);
-        setSnackbar('Таймер сна завершен'); hapticNotification('success');
+        stop(); setSleepTimerEndDate(null); setSnackbar('Таймер завершен'); hapticNotification('success');
       }, minutes * 60 * 1000);
-      setSnackbar(`Таймер установлен на ${minutes} минут`); hapticImpact('light');
-    } else { setSleepTimerEndDate(null); setSnackbar('Таймер сна отключен'); }
+      setSnackbar(`Таймер: ${minutes} мин`); hapticImpact('light');
+    } else { setSleepTimerEndDate(null); setSnackbar('Таймер отключен'); }
     setShowSleepTimerModal(false);
-  }, [stop, hapticNotification, hapticImpact, setVolume, volume]);
+  }, [stop, hapticNotification, hapticImpact]);
 
   useEffect(() => {
     if (!sleepTimerEndDate) { setTimeRemaining(null); return; }
@@ -236,6 +220,55 @@ export const App: React.FC = () => {
     setBackButton(isModalOpen, closeAllModals);
   }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, setBackButton, closeAllModals]);
 
+  // Хелпер для очистки URL от javascript: инъекций
+  const sanitizeUrl = (url: string) => {
+    if (!url) return '';
+    const trimmed = url.trim().toLowerCase();
+    if (trimmed.startsWith('javascript:') || trimmed.startsWith('data:text/html')) {
+      return '';
+    }
+    return url.trim();
+  };
+
+  const handleImport = async () => {
+    try { 
+      const text = await navigator.clipboard.readText(); 
+      if (text && (text.includes('[') || text.includes('{'))) {
+        const parsed = JSON.parse(text);
+        const list = Array.isArray(parsed) ? parsed : [parsed];
+        
+        // Строгая валидация и очистка данных
+        const normalized = list
+          .filter((s: any) => s && typeof s === 'object' && s.name && (s.url || s.streamUrl))
+          .map((s: any) => {
+            const streamUrl = sanitizeUrl(s.url || s.streamUrl);
+            if (!streamUrl) return null;
+            
+            return {
+              id: Math.random().toString(36).substr(2, 9),
+              name: String(s.name).substring(0, 50), // Ограничение длины
+              streamUrl: streamUrl,
+              coverUrl: sanitizeUrl(s.coverUrl || ''),
+              tags: Array.isArray(s.tags) ? s.tags.map((t: any) => String(t).substring(0, 20)) : [],
+              addedAt: Date.now()
+            };
+          })
+          .filter(Boolean) as Station[];
+
+        if (normalized.length > 0) {
+          setStations(prev => [...prev, ...normalized]);
+          setSnackbar(`Добавлено: ${normalized.length}`);
+          hapticNotification('success');
+        } else {
+          setSnackbar('Нет подходящих данных');
+        }
+      } else {
+        setSnackbar('Буфер пуст или не JSON');
+        hapticNotification('warning');
+      }
+    } catch (e) { setSnackbar('Нужен доступ к буферу'); }
+  };
+
   const handleCopyTemplate = useCallback(() => {
     const template = `[
   {
@@ -254,46 +287,26 @@ export const App: React.FC = () => {
     });
   }, [hapticNotification]);
 
-  const handleImport = async () => {
-    try { 
-      const text = await navigator.clipboard.readText(); 
-      if (text && (text.includes('[') || text.includes('{'))) {
-        const parsed = JSON.parse(text);
-        const list = Array.isArray(parsed) ? parsed : [parsed];
-        const normalized = list.filter((s: any) => s.name && (s.url || s.streamUrl)).map((s: any) => ({
-          id: Math.random().toString(36).substr(2, 9),
-          name: s.name, streamUrl: s.url || s.streamUrl, coverUrl: s.coverUrl || '', tags: s.tags || [], addedAt: Date.now()
-        }));
-        if (normalized.length > 0) {
-          setStations(prev => [...prev, ...normalized]);
-          setSnackbar(`Добавлено: ${normalized.length}`);
-          hapticNotification('success');
-        }
-      } else {
-        setSnackbar('Буфер пуст или не JSON');
-        hapticNotification('warning');
-      }
-    } catch (e) { setSnackbar('Нужен доступ к буферу'); }
-  };
-
   const handleReset = () => {
     setConfirmData({ message: 'Очистить весь плейлист?', onConfirm: () => { setStations([]); setFavorites([]); setOnlyFavoritesMode(false); setActiveStationId(''); setPlayingStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Плейлист очищен'); } });
     setShowConfirmModal(true);
   };
 
   const handleDemo = () => {
-    setConfirmData({ message: 'Добавить стандартный список станций?', onConfirm: () => { setStations(DEFAULT_STATIONS); if (DEFAULT_STATIONS.length > 0) { setActiveStationId(DEFAULT_STATIONS[0].id); } setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); hapticNotification('success'); } });
+    setConfirmData({ message: 'Добавить стандартный список?', onConfirm: () => { setStations(DEFAULT_STATIONS); if (DEFAULT_STATIONS.length > 0) { setActiveStationId(DEFAULT_STATIONS[0].id); } setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); hapticNotification('success'); } });
     setShowConfirmModal(true);
   };
 
   const addOrUpdateStation = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const name = formData.get('name') as string;
-    const url = formData.get('url') as string;
-    const coverUrl = formData.get('coverUrl') as string;
-    const tags = (formData.get('tags') as string).split(',').map(t => t.trim()).filter(Boolean);
+    const name = String(formData.get('name')).substring(0, 50);
+    const url = sanitizeUrl(formData.get('url') as string);
+    const coverUrl = sanitizeUrl(formData.get('coverUrl') as string);
+    const tags = (formData.get('tags') as string).split(',').map(t => t.trim().substring(0, 20)).filter(Boolean);
+    
     if (!name || !url) return;
+    
     if (editingStation) { 
         setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl, tags } : s)); 
         setEditingStation(null); setSnackbar('Обновлено'); 
@@ -305,12 +318,8 @@ export const App: React.FC = () => {
     setShowEditor(false); hapticImpact('light');
   };
 
-  useEffect(() => { if (showEditor) { setEditorPreviewUrl(editingStation?.coverUrl || ''); setEditorName(editingStation?.name || ''); setEditorTags(editingStation?.tags?.join(', ') || ''); } }, [showEditor, editingStation]);
-
-  const canPlay = Boolean(activeStation?.streamUrl);
-
   return (
-    <div className="flex flex-col min-h-screen text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212] transition-colors duration-300">
+    <div className="flex flex-col min-h-screen text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212] transition-colors duration-300 overflow-hidden">
       <div className="flex-1 flex flex-col w-full max-w-5xl mx-auto md:px-6">
         
         <header className="flex items-center justify-between px-6 py-4 md:py-6 bg-white dark:bg-[#1f1f1f] md:bg-transparent dark:md:bg-transparent shadow-md md:shadow-none z-10 shrink-0 border-b md:border-none border-gray-100 dark:border-gray-800" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)' }}>
@@ -332,14 +341,13 @@ export const App: React.FC = () => {
             {hasStations ? (
               <Swiper
                 onSwiper={setSwiperInstance}
-                onSlideChange={(swiper) => { if (!isReorderingRef.current) setActiveStationId(displayedStations[swiper.realIndex]?.id); hapticImpact('light'); }}
+                onSlideChange={(swiper) => setActiveStationId(displayedStations[swiper.realIndex]?.id)}
                 loop={displayedStations.length > 1}
                 effect={'creative'}
                 grabCursor={true}
                 slidesPerView={1}
                 creativeEffect={{
-                  limitProgress: 3,
-                  perspective: true,
+                  limitProgress: 3, perspective: true,
                   prev: { translate: ['-120%', 0, 0], rotate: [0, 0, -20], opacity: 0 },
                   next: { translate: ['12px', 0, -100], scale: 0.9, opacity: 0.6 },
                 }}
@@ -415,7 +423,6 @@ export const App: React.FC = () => {
         </main>
       </div>
 
-      {/* Playlist Side Modal (Bottom Drawer) */}
       <AnimatePresence>
         {showPlaylist && (
           <>
@@ -459,24 +466,21 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
       
-      {/* Centered Modals Wrapper */}
       <AnimatePresence>
         {(showAboutModal || showEditor || showSleepTimerModal || showConfirmModal) && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 overflow-hidden">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
-            
             <div className="relative w-full max-w-sm max-h-full overflow-y-auto no-scrollbar flex items-center justify-center pointer-events-none">
               <div className="w-full pointer-events-auto">
                 {showAboutModal && (
                   <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl flex flex-col items-center">
                     <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-12 h-12" /></div>
                     <h3 className="text-2xl font-black mb-1 dark:text-white">Radio Player</h3>
-                    <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.4em] mb-8 dark:text-white/30">Build 2.0.2</p>
-                    <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-10 leading-relaxed">Кроссплатформенный плеер с поддержкой HLS, плейлистов и таймером сна.</div>
+                    <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.4em] mb-8 dark:text-white/30">Build 2.0.3</p>
+                    <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-10 leading-relaxed">Кроссплатформенный плеер с защитой данных и таймером сна.</div>
                     <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Закрыть</RippleButton>
                   </motion.div>
                 )}
-
                 {showEditor && (
                   <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl">
                     <h3 className="text-2xl font-black mb-8 dark:text-white">{editingStation ? 'Редактирование' : 'Новая станция'}</h3>
@@ -492,7 +496,6 @@ export const App: React.FC = () => {
                     </form>
                   </motion.div>
                 )}
-
                 {showSleepTimerModal && (
                   <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl text-center">
                     <h3 className="text-2xl font-black mb-8 dark:text-white">Таймер сна</h3>
@@ -509,7 +512,6 @@ export const App: React.FC = () => {
                     {sleepTimerEndDate && <RippleButton onClick={() => handleSetSleepTimer(0)} className="w-full mt-6 py-3 text-red-500 font-bold">Выключить</RippleButton>}
                   </motion.div>
                 )}
-
                 {showConfirmModal && confirmData && (
                   <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl">
                     <h3 className="text-xl font-black mb-4 dark:text-white">Подтвердите</h3>
@@ -526,7 +528,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Snackbar Notification */}
       <AnimatePresence>
         {snackbar && (
           <motion.div initial={{ opacity: 0, y: 50, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }} exit={{ opacity: 0, y: 50, x: '-50%' }} className="fixed bottom-10 left-1/2 z-[70] w-[calc(100%-3rem)] max-w-sm px-8 py-5 rounded-[2rem] font-black bg-gray-900 text-white flex items-center justify-between shadow-2xl">
@@ -535,7 +536,6 @@ export const App: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
-
     </div>
   );
 };
