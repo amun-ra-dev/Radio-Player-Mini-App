@@ -1,8 +1,8 @@
 
-// Build: 1.9.99
-// - Fix: Removed mini-equalizer from the main carousel cover as requested.
-// - Logic: Snap-back to playing station after reorder preserved.
-// - UX: Equalizer remains in the playlist list for better navigation.
+// Build: 2.0.0
+// - Feature: Full Dark Mode support synced with Telegram theme.
+// - UX: Refined dark mode color palette for Material design feel.
+// - Fix: Swiper and Modal styles optimized for dark backgrounds.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
 const MiniEqualizer: React.FC = () => (
-  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/30 backdrop-blur-[1px]">
+  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
     <div className="flex gap-1 items-end h-3.5 mb-1">
       <motion.div animate={{ height: [4, 12, 4] }} transition={{ repeat: Infinity, duration: 0.6, ease: "easeInOut" }} className="w-1 bg-white rounded-full shadow-sm" />
       <motion.div animate={{ height: [12, 6, 12] }} transition={{ repeat: Infinity, duration: 0.5, ease: "easeInOut", delay: 0.1 }} className="w-1 bg-white rounded-full shadow-sm" />
@@ -49,7 +49,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
     return (
       <div className="absolute top-4 left-4 z-20 flex flex-wrap gap-1.5 max-w-[80%] pointer-events-none">
         {station.tags.map(tag => (
-          <span key={tag} className="text-[8px] font-black uppercase px-2 py-1 bg-black/40 backdrop-blur-md text-white rounded-lg border border-white/10 shadow-sm">
+          <span key={tag} className="text-[8px] font-black uppercase px-2 py-1 bg-black/50 backdrop-blur-md text-white rounded-lg border border-white/10 shadow-sm">
             {tag}
           </span>
         ))}
@@ -69,7 +69,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
   }
 
   return (
-    <div className={`${className} relative bg-gray-200 dark:bg-gray-800 overflow-hidden`}>
+    <div className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}>
       {renderTags()}
       <motion.img
         ref={imgRef}
@@ -84,7 +84,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
         className="w-full h-full object-cover select-none pointer-events-none"
       />
       {!isLoaded && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-200 dark:bg-gray-800 z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-200 dark:bg-[#1a1a1a] z-10">
           <div className="w-8 h-8 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
         </div>
       )}
@@ -117,11 +117,11 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       exit={{ opacity: 0, scale: 0.95 }}
       onDragStart={() => { setIsDragging(true); hapticImpact('medium'); }}
       onDragEnd={() => setIsDragging(false)}
-      whileDrag={{ scale: 1.02, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #f0f0f0)", boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)" }}
-      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-colors group relative border-2 ${isActive ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800/30' : 'hover:bg-gray-50 dark:hover:bg-gray-800/40 bg-white dark:bg-[#1c1c1c] border-transparent'} cursor-grab active:cursor-grabbing`}
+      whileDrag={{ scale: 1.02, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #2c2c2c)", boxShadow: "0 20px 25px -5px rgb(0 0 0 / 0.3)" }}
+      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-colors group relative border-2 ${isActive ? 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-500/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#1c1c1c] border-transparent'} cursor-grab active:cursor-grabbing`}
       onClick={() => !isDragging && onSelect()}
     >
-      <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl shadow-sm bg-gray-100 dark:bg-gray-800 pointer-events-none">
+      <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl shadow-sm bg-gray-100 dark:bg-[#252525] pointer-events-none">
         <StationCover station={station} className="w-full h-full" showTags={false} />
         <AnimatePresence>
           {isPlaying && (status === 'playing' || status === 'loading') && (
@@ -130,24 +130,24 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         </AnimatePresence>
       </div>
       <div className="flex-1 min-w-0 pointer-events-none">
-        <p className={`font-bold text-base truncate leading-tight ${isActive ? 'text-blue-600 dark:text-blue-400' : ''}`}>{station.name}</p>
+        <p className={`font-bold text-base truncate leading-tight ${isActive ? 'text-blue-600 dark:text-blue-400' : 'dark:text-white/90'}`}>{station.name}</p>
         <div className="flex items-center gap-1.5 mt-0.5">
           {station.tags && station.tags.length > 0 && (
             <div className="flex gap-1">
               {station.tags.slice(0, 2).map(tag => (
-                <span key={tag} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 rounded-md">{tag}</span>
+                <span key={tag} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-gray-100 dark:bg-[#333] text-gray-500 dark:text-gray-400 rounded-md">{tag}</span>
               ))}
             </div>
           )}
-          <p className="text-[9px] opacity-20 truncate uppercase tracking-wider font-bold">{station.streamUrl}</p>
+          <p className="text-[9px] opacity-20 dark:opacity-40 truncate uppercase tracking-wider font-bold dark:text-white">{station.streamUrl}</p>
         </div>
       </div>
       <div className="flex gap-0.5 ml-auto pr-1">
-        <RippleButton onClick={onToggleFavorite} className={`p-2.5 rounded-xl ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-700'}`}>
+        <RippleButton onClick={onToggleFavorite} className={`p-2.5 rounded-xl ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
           {isFavorite ? <Icons.Star /> : <Icons.StarOutline />}
         </RippleButton>
-        <RippleButton onClick={onEdit} className="p-2.5 rounded-xl text-gray-400 hover:text-blue-500"><Icons.Settings /></RippleButton>
-        <RippleButton onClick={onDelete} className="p-2.5 rounded-xl text-gray-400 hover:text-red-500">
+        <RippleButton onClick={onEdit} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 hover:text-blue-500"><Icons.Settings /></RippleButton>
+        <RippleButton onClick={onDelete} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 hover:text-red-500">
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
         </RippleButton>
       </div>
@@ -510,15 +510,15 @@ export const App: React.FC = () => {
           <h1 className="text-2xl font-black tracking-tighter leading-none">Radio Player</h1>
         </div>
         <div className="flex items-center gap-1">
-          <RippleButton onClick={toggleOnlyFavoritesMode} disabled={!hasStations} className={`w-[38px] h-[38px] flex items-center justify-center rounded-full transition-all duration-300 ${!hasStations ? 'opacity-20 pointer-events-none' : onlyFavoritesMode ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500 scale-110' : 'text-gray-400'}`}><Icons.Star /></RippleButton>
-          <motion.button layout disabled={!hasStations} onClick={() => setShowSleepTimerModal(true)} className={`ripple h-[38px] rounded-full relative flex items-center justify-center transition-all ${!hasStations ? 'w-[38px] opacity-20 pointer-events-none' : (sleepTimerEndDate ? 'bg-blue-600 dark:bg-blue-500 text-white px-4' : 'w-[38px] text-gray-400')}`} transition={{ type: 'spring', stiffness: 500, damping: 30 }}>
+          <RippleButton onClick={toggleOnlyFavoritesMode} disabled={!hasStations} className={`w-[38px] h-[38px] flex items-center justify-center rounded-full transition-all duration-300 ${!hasStations ? 'opacity-20 pointer-events-none' : onlyFavoritesMode ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500 scale-110' : 'text-gray-400 dark:text-gray-500'}`}><Icons.Star /></RippleButton>
+          <motion.button layout disabled={!hasStations} onClick={() => setShowSleepTimerModal(true)} className={`ripple h-[38px] rounded-full relative flex items-center justify-center transition-all ${!hasStations ? 'w-[38px] opacity-20 pointer-events-none' : (sleepTimerEndDate ? 'bg-blue-600 dark:bg-blue-500 text-white px-4' : 'w-[38px] text-gray-400 dark:text-gray-500')}`} transition={{ type: 'spring', stiffness: 500, damping: 30 }}>
             <AnimatePresence mode="popLayout" initial={false}>
               {sleepTimerEndDate ? (
                 <motion.span key="time" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className="font-black text-sm leading-none whitespace-nowrap">{timeRemaining ? `${Math.ceil((sleepTimerEndDate - Date.now()) / 60000)}m` : '...'}</motion.span>
               ) : <motion.div key="icon" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}><Icons.Timer /></motion.div>}
             </AnimatePresence>
           </motion.button>
-          <RippleButton onClick={() => setShowPlaylist(true)} className="w-[38px] h-[38px] flex items-center justify-center rounded-full text-gray-400"><Icons.List /></RippleButton>
+          <RippleButton onClick={() => setShowPlaylist(true)} className="w-[38px] h-[38px] flex items-center justify-center rounded-full text-gray-400 dark:text-gray-500"><Icons.List /></RippleButton>
         </div>
       </div>
 
@@ -563,14 +563,13 @@ export const App: React.FC = () => {
             >
               {displayedStations.map((station) => (
                 <SwiperSlide key={station.id} className="w-full h-full flex justify-center">
-                  <div className={`relative w-full aspect-square rounded-[2.5rem] shadow-2xl overflow-hidden bg-white dark:bg-[#2c2c2c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`} onClick={() => canPlay && handleTogglePlay()}>
+                  <div className={`relative w-full aspect-square rounded-[2.5rem] shadow-2xl dark:shadow-black/60 overflow-hidden bg-white dark:bg-[#1c1c1c] ${canPlay ? 'cursor-pointer' : 'cursor-default'}`} onClick={() => canPlay && handleTogglePlay()}>
                     <StationCover station={station} className="w-full h-full" />
                     <div className="absolute bottom-6 right-6 z-20" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
                       <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
                         {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
                       </RippleButton>
                     </div>
-                    {/* Visual playing indicator removed from main cover as per user request */}
                   </div>
                 </SwiperSlide>
               ))}
@@ -600,8 +599,8 @@ export const App: React.FC = () => {
               <div className="text-center w-full px-4 min-h-[60px] flex flex-col justify-center">
                 <AnimatePresence mode="wait">
                   <motion.div key={activeStation?.id || 'none'} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
-                    <h2 className="text-3xl font-black mb-1 truncate leading-tight">{activeStation?.name || 'Пусто'}</h2>
-                    <p className="text-[10px] opacity-40 uppercase tracking-[0.2em] font-black">
+                    <h2 className="text-3xl font-black mb-1 truncate leading-tight dark:text-white">{activeStation?.name || 'Пусто'}</h2>
+                    <p className="text-[10px] opacity-40 dark:opacity-60 uppercase tracking-[0.2em] font-black dark:text-white/80">
                         {!activeStation ? 'Выберите источник' : 
                          (playingStationId === activeStationId && status === 'playing' ? 'В эфире' : 
                           playingStationId === activeStationId && status === 'loading' ? 'Загрузка...' : 
@@ -612,20 +611,20 @@ export const App: React.FC = () => {
               </div>
 
               <div className="w-full max-w-[300px] flex flex-col gap-3">
-                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 dark:bg-gray-800 rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
+                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 dark:bg-[#2c2c2c] rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
               </div>
 
               <div className="w-full max-w-[360px] flex items-center justify-around mt-2">
-                <RippleButton onClick={() => navigateStation('prev')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 hover:text-blue-600 active:scale-90' : 'text-gray-300 opacity-20 pointer-events-none'}`}><Icons.Prev /></RippleButton>
-                <RippleButton onClick={() => canPlay && handleTogglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ${canPlay ? 'bg-blue-600 text-white shadow-blue-600/30' : 'bg-gray-200 dark:bg-gray-800 text-gray-400'}`} disabled={!canPlay}>
+                <RippleButton onClick={() => navigateStation('prev')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 active:scale-90' : 'text-gray-300 dark:text-gray-700 opacity-20 pointer-events-none'}`}><Icons.Prev /></RippleButton>
+                <RippleButton onClick={() => canPlay && handleTogglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ${canPlay ? 'bg-blue-600 text-white shadow-blue-600/30 dark:shadow-blue-500/10' : 'bg-gray-200 dark:bg-[#2c2c2c] text-gray-400 dark:text-gray-600'}`} disabled={!canPlay}>
                     {(playingStationId === activeStationId) && (status === 'playing' || status === 'loading') ? <Icons.Pause /> : <Icons.Play />}
                 </RippleButton>
-                <RippleButton onClick={() => navigateStation('next')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 hover:text-blue-600 active:scale-90' : 'text-gray-300 opacity-20 pointer-events-none'}`}><Icons.Next /></RippleButton>
+                <RippleButton onClick={() => navigateStation('next')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 active:scale-90' : 'text-gray-300 dark:text-gray-700 opacity-20 pointer-events-none'}`}><Icons.Next /></RippleButton>
               </div>
 
             </div>
             
-            <div className="flex flex-col items-center gap-2 pt-2 text-gray-300 dark:text-gray-600 cursor-grab opacity-50 hover:opacity-100 transition-opacity w-full">
+            <div className="flex flex-col items-center gap-2 pt-2 text-gray-300 dark:text-gray-700 cursor-grab opacity-50 hover:opacity-100 transition-opacity w-full">
               <div className="w-10 h-1 rounded-full bg-current mx-auto" />
               <span className="text-[9px] uppercase font-bold tracking-widest text-center">Плейлист</span>
             </div>
@@ -638,12 +637,12 @@ export const App: React.FC = () => {
         {showPlaylist && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-30 backdrop-blur-sm" onClick={closeAllModals} />
-            <motion.div drag="y" dragListener={false} dragControls={dragControls} dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 1 }} dragMomentum={false} onDragEnd={(_, info) => (info.offset.y > 100 || info.velocity.y > 500) && setShowPlaylist(false)} initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.4 }} className="fixed bottom-0 left-0 right-0 h-[88vh] bg-white dark:bg-[#1f1f1f] rounded-t-[3rem] z-40 flex flex-col shadow-2xl overflow-hidden pb-10">
-              <div className="w-full flex flex-col items-center pt-5 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing" onPointerDown={(e) => dragControls.start(e)}><div className="w-16 h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full mb-3" /></div>
+            <motion.div drag="y" dragListener={false} dragControls={dragControls} dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 1 }} dragMomentum={false} onDragEnd={(_, info) => (info.offset.y > 100 || info.velocity.y > 500) && setShowPlaylist(false)} initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.4 }} className="fixed bottom-0 left-0 right-0 h-[88vh] bg-white dark:bg-[#181818] rounded-t-[3rem] z-40 flex flex-col shadow-2xl overflow-hidden pb-10">
+              <div className="w-full flex flex-col items-center pt-5 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing" onPointerDown={(e) => dragControls.start(e)}><div className="w-16 h-1.5 bg-gray-200 dark:bg-[#333] rounded-full mb-3" /></div>
               <div className="px-4 pb-2">
-                <div className="flex items-center bg-gray-100 dark:bg-gray-800 rounded-2xl p-1">
-                  <button onClick={() => setPlaylistFilter('all')} className={`flex-1 py-2 text-sm font-black rounded-[0.8rem] transition-all ${playlistFilter === 'all' ? 'bg-white dark:bg-black/20 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500'}`}>Все</button>
-                  <button onClick={() => setPlaylistFilter('favorites')} className={`flex-1 py-2 text-sm font-black rounded-[0.8rem] transition-all ${playlistFilter === 'favorites' ? 'bg-white dark:bg-black/20 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500'}`}>Избранное</button>
+                <div className="flex items-center bg-gray-100 dark:bg-[#252525] rounded-2xl p-1">
+                  <button onClick={() => setPlaylistFilter('all')} className={`flex-1 py-2 text-sm font-black rounded-[0.8rem] transition-all ${playlistFilter === 'all' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>Все</button>
+                  <button onClick={() => setPlaylistFilter('favorites')} className={`flex-1 py-2 text-sm font-black rounded-[0.8rem] transition-all ${playlistFilter === 'favorites' ? 'bg-white dark:bg-[#333] text-blue-600 dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>Избранное</button>
                 </div>
               </div>
               <div ref={listRef} className="flex-1 overflow-y-auto px-4 flex flex-col overscroll-contain" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -665,13 +664,13 @@ export const App: React.FC = () => {
                         />
                     ))}
                   </ReorderGroup>
-                ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-8"><h3 className="text-lg font-black text-gray-400">{playlistFilter === 'favorites' ? 'Нет избранных' : 'Плейлист пуст'}</h3></div>}
+                ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-8"><h3 className="text-lg font-black text-gray-400 dark:text-gray-600">{playlistFilter === 'favorites' ? 'Нет избранных' : 'Плейлист пуст'}</h3></div>}
                 <div className="mt-6 flex flex-col gap-4 mb-safe">
-                  <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); setShowPlaylist(false); }} className="w-full p-5 rounded-[1.5rem] border-2 border-dashed border-gray-200 dark:border-gray-700 text-gray-400 font-black flex items-center justify-center gap-2"><Icons.Add /> Добавить станцию</RippleButton>
+                  <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); setShowPlaylist(false); }} className="w-full p-5 rounded-[1.5rem] border-2 border-dashed border-gray-200 dark:border-[#333] text-gray-400 dark:text-gray-600 font-black flex items-center justify-center gap-2"><Icons.Add /> Добавить станцию</RippleButton>
                   <div className="grid grid-cols-3 gap-3">
-                    <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-[10px] font-black text-gray-500"><Icons.Import /> <span className="mt-1">Импорт</span></RippleButton>
-                    <RippleButton onClick={() => setShowExportModal(true)} className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-[10px] font-black text-gray-500"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
-                    <RippleButton onClick={handleReset} className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl text-[10px] font-black text-red-400/70"><Icons.Reset /> <span className="mt-1">Очистить</span></RippleButton>
+                    <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-[#252525] rounded-2xl text-[10px] font-black text-gray-500 dark:text-gray-400"><Icons.Import /> <span className="mt-1">Импорт</span></RippleButton>
+                    <RippleButton onClick={() => setShowExportModal(true)} className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-[#252525] rounded-2xl text-[10px] font-black text-gray-500 dark:text-gray-400"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
+                    <RippleButton onClick={handleReset} className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-[#252525] rounded-2xl text-[10px] font-black text-red-400/70 dark:text-red-900/50"><Icons.Reset /> <span className="mt-1">Очистить</span></RippleButton>
                   </div>
                 </div>
               </div>
@@ -686,10 +685,10 @@ export const App: React.FC = () => {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
-              <h3 className="text-xl font-black mb-1">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.3em] mb-6">Build 1.9.99</p>
-              <div className="text-sm font-bold text-gray-500 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
-              <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black">Понятно</RippleButton>
+              <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.0.0</p>
+              <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
+              <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Понятно</RippleButton>
             </motion.div>
           </div>
         )}
@@ -701,19 +700,19 @@ export const App: React.FC = () => {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl my-auto">
               <div className="flex justify-between items-start mb-6">
-                <h3 className="text-2xl font-black">{editingStation ? 'Настройки' : 'Новая станция'}</h3>
-                <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg bg-gray-100 dark:bg-gray-800 shrink-0">
+                <h3 className="text-2xl font-black dark:text-white">{editingStation ? 'Настройки' : 'Новая станция'}</h3>
+                <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg bg-gray-100 dark:bg-[#252525] shrink-0">
                   <StationCover station={{ name: editorName, coverUrl: editorPreviewUrl, tags: editorTags.split(',').map(t => t.trim()).filter(Boolean) } as any} className="w-full h-full" showTags={false} />
                 </div>
               </div>
               <form onSubmit={addOrUpdateStation} className="flex flex-col gap-4">
-                <input name="name" required value={editorName} onChange={(e) => setEditorName(e.target.value)} placeholder="Название станции" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all" />
-                <input name="url" type="url" required defaultValue={editingStation?.streamUrl || ''} placeholder="URL потока (mp3, aac, m3u8)" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all" />
-                <input name="coverUrl" type="url" value={editorPreviewUrl} onChange={(e) => setEditorPreviewUrl(e.target.value)} placeholder="URL обложки (картинка)" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all" />
-                <input name="tags" value={editorTags} onChange={(e) => setEditorTags(e.target.value)} placeholder="Теги (рок, чилл, 90-е...)" className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all" />
+                <input name="name" required value={editorName} onChange={(e) => setEditorName(e.target.value)} placeholder="Название станции" className="w-full bg-gray-100 dark:bg-[#252525] text-gray-900 dark:text-white rounded-xl px-4 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600" />
+                <input name="url" type="url" required defaultValue={editingStation?.streamUrl || ''} placeholder="URL потока (mp3, aac, m3u8)" className="w-full bg-gray-100 dark:bg-[#252525] text-gray-900 dark:text-white rounded-xl px-4 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600" />
+                <input name="coverUrl" type="url" value={editorPreviewUrl} onChange={(e) => setEditorPreviewUrl(e.target.value)} placeholder="URL обложки (картинка)" className="w-full bg-gray-100 dark:bg-[#252525] text-gray-900 dark:text-white rounded-xl px-4 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600" />
+                <input name="tags" value={editorTags} onChange={(e) => setEditorTags(e.target.value)} placeholder="Теги (рок, чилл, 90-е...)" className="w-full bg-gray-100 dark:bg-[#252525] text-gray-900 dark:text-white rounded-xl px-4 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-gray-400 dark:placeholder:text-gray-600" />
                 <div className="flex gap-3 mt-4">
-                  <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-gray-800 rounded-2xl font-black">Отмена</RippleButton>
-                  <RippleButton type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black">Сохранить</RippleButton>
+                  <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-[#252525] text-gray-500 dark:text-gray-400 rounded-2xl font-black">Отмена</RippleButton>
+                  <RippleButton type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Сохранить</RippleButton>
                 </div>
               </form>
             </motion.div>
@@ -726,14 +725,14 @@ export const App: React.FC = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl">
-              <h3 className="text-2xl font-black mb-4">Таймер сна</h3>
-              {timeRemaining && <div className="text-center font-black text-2xl text-blue-600 mb-6">{timeRemaining}</div>}
-              <div className="grid grid-cols-2 gap-2 mb-6">{[15, 30, 45, 60].map(m => <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-3 bg-gray-100 dark:bg-gray-800 rounded-xl font-bold">{m} мин</RippleButton>)}</div>
+              <h3 className="text-2xl font-black mb-4 dark:text-white">Таймер сна</h3>
+              {timeRemaining && <div className="text-center font-black text-2xl text-blue-600 dark:text-blue-400 mb-6">{timeRemaining}</div>}
+              <div className="grid grid-cols-2 gap-2 mb-6">{[15, 30, 45, 60].map(m => <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-3 bg-gray-100 dark:bg-[#252525] text-gray-700 dark:text-gray-300 rounded-xl font-bold">{m} мин</RippleButton>)}</div>
               <form onSubmit={handleCustomTimerSubmit} className="grid grid-cols-2 gap-2 w-full">
-                <input type="number" value={customTimerInput} onChange={(e) => setCustomTimerInput(e.target.value)} placeholder="Мин" className="w-full h-12 bg-gray-100 dark:bg-gray-800 rounded-xl px-4 outline-none font-bold text-center focus:ring-2 focus:ring-blue-500/50 transition-all" />
-                <RippleButton type="submit" className="w-full h-12 bg-blue-600 text-white rounded-xl font-black flex items-center justify-center">OK</RippleButton>
+                <input type="number" value={customTimerInput} onChange={(e) => setCustomTimerInput(e.target.value)} placeholder="Мин" className="w-full h-12 bg-gray-100 dark:bg-[#252525] text-gray-900 dark:text-white rounded-xl px-4 outline-none font-bold text-center focus:ring-2 focus:ring-blue-500/50 transition-all" />
+                <RippleButton type="submit" className="w-full h-12 bg-blue-600 text-white rounded-xl font-black flex items-center justify-center shadow-lg shadow-blue-600/20">OK</RippleButton>
               </form>
-              {sleepTimerEndDate && <RippleButton onClick={() => handleSetSleepTimer(0)} className="w-full mt-4 h-12 bg-red-50 text-red-500 rounded-xl font-black flex items-center justify-center">Сбросить</RippleButton>}
+              {sleepTimerEndDate && <RippleButton onClick={() => handleSetSleepTimer(0)} className="w-full mt-4 h-12 bg-red-50 dark:bg-red-900/10 text-red-500 rounded-xl font-black flex items-center justify-center">Сбросить</RippleButton>}
             </motion.div>
           </div>
         )}
@@ -744,11 +743,11 @@ export const App: React.FC = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl">
-              <h3 className="text-2xl font-black mb-6">Экспорт JSON</h3>
+              <h3 className="text-2xl font-black mb-6 dark:text-white">Экспорт JSON</h3>
               <div className="flex flex-col gap-3">
-                <RippleButton onClick={() => handleExport('all')} className="w-full py-4 bg-gray-100 dark:bg-gray-800 rounded-2xl font-bold">Весь список</RippleButton>
-                <RippleButton onClick={() => handleExport('favorites')} className="w-full py-4 bg-gray-100 dark:bg-gray-800 rounded-2xl font-bold">Только избранное</RippleButton>
-                <RippleButton onClick={closeAllModals} className="w-full py-3 text-gray-400 font-bold">Закрыть</RippleButton>
+                <RippleButton onClick={() => handleExport('all')} className="w-full py-4 bg-gray-100 dark:bg-[#252525] text-gray-700 dark:text-gray-300 rounded-2xl font-bold">Весь список</RippleButton>
+                <RippleButton onClick={() => handleExport('favorites')} className="w-full py-4 bg-gray-100 dark:bg-[#252525] text-gray-700 dark:text-gray-300 rounded-2xl font-bold">Только избранное</RippleButton>
+                <RippleButton onClick={closeAllModals} className="w-full py-3 text-gray-400 dark:text-gray-600 font-bold">Закрыть</RippleButton>
               </div>
             </motion.div>
           </div>
@@ -760,12 +759,12 @@ export const App: React.FC = () => {
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl">
-              <h3 className="text-2xl font-black mb-6">Импорт</h3>
+              <h3 className="text-2xl font-black mb-6 dark:text-white">Импорт</h3>
               <form onSubmit={(e) => { e.preventDefault(); const t = new FormData(e.currentTarget).get('t') as string; processImportText(t); }} className="flex flex-col gap-4">
-                <textarea name="t" required placeholder="Вставьте JSON здесь..." className="w-full bg-gray-100 dark:bg-gray-800 rounded-xl px-4 py-3 outline-none font-bold h-32 resize-none text-sm" />
+                <textarea name="t" required placeholder="Вставьте JSON здесь..." className="w-full bg-gray-100 dark:bg-[#252525] text-gray-900 dark:text-white rounded-xl px-4 py-3 outline-none font-bold h-32 resize-none text-sm placeholder:text-gray-400 dark:placeholder:text-gray-600" />
                 <div className="flex gap-2">
-                  <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-gray-800 rounded-2xl font-black">Отмена</RippleButton>
-                  <RippleButton type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black">Импорт</RippleButton>
+                  <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-[#252525] text-gray-500 dark:text-gray-400 rounded-2xl font-black">Отмена</RippleButton>
+                  <RippleButton type="submit" className="flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Импорт</RippleButton>
                 </div>
               </form>
             </motion.div>
@@ -778,11 +777,11 @@ export const App: React.FC = () => {
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl">
-              <h3 className="text-xl font-black mb-4">Подтверждение</h3>
-              <p className="font-bold text-gray-500 mb-8">{confirmData.message}</p>
+              <h3 className="text-xl font-black mb-4 dark:text-white">Подтверждение</h3>
+              <p className="font-bold text-gray-500 dark:text-gray-400 mb-8">{confirmData.message}</p>
               <div className="flex gap-3">
-                <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-gray-800 rounded-2xl font-black">Нет</RippleButton>
-                <RippleButton onClick={() => { confirmData.onConfirm(); closeAllModals(); }} className="flex-1 py-4 bg-red-500 text-white rounded-2xl font-black">Да</RippleButton>
+                <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-[#252525] text-gray-500 dark:text-gray-400 rounded-2xl font-black">Нет</RippleButton>
+                <RippleButton onClick={() => { confirmData.onConfirm(); closeAllModals(); }} className="flex-1 py-4 bg-red-500 text-white rounded-2xl font-black shadow-lg shadow-red-500/20">Да</RippleButton>
               </div>
             </motion.div>
           </div>
@@ -791,9 +790,9 @@ export const App: React.FC = () => {
 
       <AnimatePresence>
         {snackbar && (
-          <motion.div initial={{ opacity: 0, y: 50, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 50, scale: 0.9 }} className="fixed bottom-10 left-6 right-6 z-50 bg-gray-900/90 dark:bg-white/95 backdrop-blur-xl text-white dark:text-gray-900 px-6 py-4 rounded-[1.5rem] font-bold flex items-center justify-between shadow-2xl">
+          <motion.div initial={{ opacity: 0, y: 50, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 50, scale: 0.9 }} className="fixed bottom-10 left-6 right-6 z-50 bg-gray-900/90 dark:bg-[#333]/95 backdrop-blur-xl text-white px-6 py-4 rounded-[1.5rem] font-bold flex items-center justify-between shadow-2xl">
             <span className="truncate pr-4">{snackbar}</span>
-            <button onClick={() => setSnackbar(null)} className="shrink-0 text-blue-400 font-black uppercase text-xs">OK</button>
+            <button onClick={() => setSnackbar(null)} className="shrink-0 text-blue-400 dark:text-blue-300 font-black uppercase text-xs">OK</button>
           </motion.div>
         )}
       </AnimatePresence>

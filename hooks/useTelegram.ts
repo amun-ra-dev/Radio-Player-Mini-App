@@ -22,7 +22,6 @@ export const useTelegram = () => {
     };
 
     const applyInsets = () => {
-      // Telegram (новые версии)
       const safe = tg.safeAreaInset || tg.contentSafeAreaInset || null;
 
       if (safe) {
@@ -31,7 +30,6 @@ export const useTelegram = () => {
         setCssVar('--tg-safe-left', `${safe.left || 0}px`);
         setCssVar('--tg-safe-right', `${safe.right || 0}px`);
       } else {
-        // fallback: пусть CSS env() отработает сам
         setCssVar('--tg-safe-top', `env(safe-area-inset-top, 0px)`);
         setCssVar('--tg-safe-bottom', `env(safe-area-inset-bottom, 0px)`);
         setCssVar('--tg-safe-left', `env(safe-area-inset-left, 0px)`);
@@ -54,7 +52,13 @@ export const useTelegram = () => {
       document.body.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
       document.body.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#222222');
 
-      // Подружить шапку/фон Telegram с приложением (если доступно)
+      // Синхронизация Tailwind dark mode с темой Telegram
+      if (tg.colorScheme === 'dark') {
+        document.documentElement.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+      }
+
       try {
         if (typeof tg.setHeaderColor === 'function') tg.setHeaderColor(tg.themeParams.bg_color || 'bg_color');
       } catch {}
@@ -73,31 +77,30 @@ export const useTelegram = () => {
       setIsExpanded(Boolean(tg.isExpanded));
       applyInsets();
       applyViewport();
+      applyTheme(); // Обновляем тему при изменении параметров
     };
 
-    // Мобилки: expand + fullscreen (если поддерживается)
     if (isMobile) {
       try {
         tg.expand();
       } catch {}
 
-      // 1) пробуем сразу
       requestFullscreenSafe();
 
-      // 2) если Telegram/OS требует user gesture — пробуем на первый тап
       const once = () => requestFullscreenSafe();
       window.addEventListener('pointerdown', once, { once: true, passive: true });
       window.addEventListener('touchstart', once, { once: true, passive: true });
     }
 
     updateUIState();
-    applyTheme();
-
+    
     tg.onEvent('viewportChanged', updateUIState);
+    tg.onEvent('themeChanged', applyTheme);
 
     return () => {
       try {
         tg.offEvent('viewportChanged', updateUIState);
+        tg.offEvent('themeChanged', applyTheme);
       } catch {}
     };
   }, [tg, isMobile]);
