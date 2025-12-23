@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <!-- App Version 1.9.81 -->
+    <!-- App Version 1.9.80 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Radio Player</title>
@@ -31,27 +31,19 @@
           --tg-safe-left: env(safe-area-inset-left, 0px);
           --tg-safe-right: env(safe-area-inset-right, 0px);
         }
-        html, body { 
-          height: 100%; 
-          margin: 0; 
-          padding: 0; 
-          overflow: hidden; 
-          overscroll-behavior: none; /* Block system pull-to-refresh/glow */
-        }
+        html, body { height: 100%; margin: 0; padding: 0; }
         body {
             font-family: 'Roboto', sans-serif;
             -webkit-tap-highlight-color: transparent;
-            background-color: var(--tg-theme-bg-color, #f5f5f5);
+            overflow: hidden;
+            background-color: var(--tg-theme-bg-color, #ffffff);
             color: var(--tg-theme-text-color, #222222);
             height: var(--tg-viewport-height, 100vh);
             width: 100vw;
-            position: fixed; /* Extra stability */
-            top: 0;
-            left: 0;
         }
         #root {
-          height: 100%;
-          width: 100%;
+          height: var(--tg-viewport-height, 100vh);
+          width: 100vw;
           display: flex;
           flex-direction: column;
         }
@@ -69,8 +61,17 @@
         .swiper-slide { display: flex; align-items: center; justify-content: center; }
         .swiper-slide-shadow { border-radius: 2.5rem; }
 
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        /* Dark Mode overrides for native scrollbars if needed */
+        .dark ::-webkit-scrollbar {
+          width: 6px;
+        }
+        .dark ::-webkit-scrollbar-thumb {
+          background: #333;
+          border-radius: 10px;
+        }
+        .dark ::-webkit-scrollbar-track {
+          background: transparent;
+        }
     </style>
 <script type="importmap">
 {
