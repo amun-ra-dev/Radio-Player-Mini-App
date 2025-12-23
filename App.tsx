@@ -1,8 +1,8 @@
 
-// Build: 2.0.0
+// Build: 2.0.1
+// - Fix: Initial volume set to 50% (0.5).
 // - Feature: Full Dark Mode support synced with Telegram theme.
 // - UX: Refined dark mode color palette for Material design feel.
-// - Fix: Swiper and Modal styles optimized for dark backgrounds.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -197,8 +197,8 @@ export const App: React.FC = () => {
   const [editorTags, setEditorTags] = useState('');
 
   const sleepTimerTimeoutRef = useRef<number | null>(null);
-  const originalVolumeRef = useRef<number>(0.45);
-  const lastNonZeroVolumeRef = useRef<number>(0.45);
+  const originalVolumeRef = useRef<number>(0.5);
+  const lastNonZeroVolumeRef = useRef<number>(0.5);
   const isFadingOutRef = useRef<boolean>(false);
   const dragControls = useDragControls();
   const listRef = useRef<HTMLDivElement>(null);
@@ -401,7 +401,7 @@ export const App: React.FC = () => {
         case 'arrowright': navigateStation('next'); break;
         case 'arrowup': e.preventDefault(); setVolume(prev => Math.min(1, prev + 0.05)); break;
         case 'arrowdown': e.preventDefault(); setVolume(prev => Math.max(0, prev - 0.05)); break;
-        case 'm': case 'ь': if (volume > 0) { lastNonZeroVolumeRef.current = volume; setVolume(0); } else { setVolume(lastNonZeroVolumeRef.current || 0.45); } break;
+        case 'm': case 'ь': if (volume > 0) { lastNonZeroVolumeRef.current = volume; setVolume(0); } else { setVolume(lastNonZeroVolumeRef.current || 0.5); } break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -686,7 +686,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.0.0</p>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.0.1</p>
               <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Понятно</RippleButton>
             </motion.div>

@@ -6,7 +6,7 @@ declare const Hls: any;
 
 export const useAudio = (streamUrl: string | null) => {
   const [status, setStatus] = useState<PlayerStatus>('idle');
-  const [volume, setVolume] = useState(0.45);
+  const [volume, setVolume] = useState(0.5);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hlsRef = useRef<any>(null);
   const retryCountRef = useRef(0);
