@@ -1,8 +1,8 @@
 
-// Build: 2.0.3
-// - Security: Added strict JSON schema validation for imports.
-// - Security: URL sanitization to prevent javascript: protocol execution.
-// - UI: Fixed modal centering and template copy.
+// Build: 2.0.6
+// - Fixed: Modal transition stability by switching from spring to tween.
+// - UI: Added will-change and improved overscroll behavior for smoother feel.
+// - Fix: Balanced z-indexing for snacks and modals.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
@@ -82,7 +82,7 @@ export const App: React.FC = () => {
   const [showEditor, setShowEditor] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [confirmData, setConfirmData] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [confirmData, setConfirmData] = useState<{ message: string; confirmText: string; isDanger: boolean; onConfirm: () => void } | null>(null);
   const [editingStation, setEditingStation] = useState<Station | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
   const [showSleepTimerModal, setShowSleepTimerModal] = useState(false);
@@ -140,7 +140,6 @@ export const App: React.FC = () => {
     return displayedStations.find(s => s.id === activeStationId) || displayedStations[0] || null;
   }, [displayedStations, activeStationId]);
 
-  // Fix: Defined missing canPlay variable to fix errors in the UI components
   const canPlay = !!activeStation;
 
   const playingStation = useMemo<Station | null>(() => {
@@ -220,13 +219,10 @@ export const App: React.FC = () => {
     setBackButton(isModalOpen, closeAllModals);
   }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, setBackButton, closeAllModals]);
 
-  // Хелпер для очистки URL от javascript: инъекций
   const sanitizeUrl = (url: string) => {
     if (!url) return '';
     const trimmed = url.trim().toLowerCase();
-    if (trimmed.startsWith('javascript:') || trimmed.startsWith('data:text/html')) {
-      return '';
-    }
+    if (trimmed.startsWith('javascript:') || trimmed.startsWith('data:text/html')) return '';
     return url.trim();
   };
 
@@ -236,17 +232,14 @@ export const App: React.FC = () => {
       if (text && (text.includes('[') || text.includes('{'))) {
         const parsed = JSON.parse(text);
         const list = Array.isArray(parsed) ? parsed : [parsed];
-        
-        // Строгая валидация и очистка данных
         const normalized = list
           .filter((s: any) => s && typeof s === 'object' && s.name && (s.url || s.streamUrl))
           .map((s: any) => {
             const streamUrl = sanitizeUrl(s.url || s.streamUrl);
             if (!streamUrl) return null;
-            
             return {
               id: Math.random().toString(36).substr(2, 9),
-              name: String(s.name).substring(0, 50), // Ограничение длины
+              name: String(s.name).substring(0, 50),
               streamUrl: streamUrl,
               coverUrl: sanitizeUrl(s.coverUrl || ''),
               tags: Array.isArray(s.tags) ? s.tags.map((t: any) => String(t).substring(0, 20)) : [],
@@ -254,14 +247,11 @@ export const App: React.FC = () => {
             };
           })
           .filter(Boolean) as Station[];
-
         if (normalized.length > 0) {
           setStations(prev => [...prev, ...normalized]);
           setSnackbar(`Добавлено: ${normalized.length}`);
           hapticNotification('success');
-        } else {
-          setSnackbar('Нет подходящих данных');
-        }
+        } else setSnackbar('Нет подходящих данных');
       } else {
         setSnackbar('Буфер пуст или не JSON');
         hapticNotification('warning');
@@ -282,18 +272,44 @@ export const App: React.FC = () => {
       hapticNotification('success');
       setSnackbar('Шаблон скопирован!');
     }).catch(() => {
-      setSnackbar('Нужен доступ к буферу');
+      setSnackbar('Ошибка копирования');
       hapticNotification('error');
     });
   }, [hapticNotification]);
 
   const handleReset = () => {
-    setConfirmData({ message: 'Очистить весь плейлист?', onConfirm: () => { setStations([]); setFavorites([]); setOnlyFavoritesMode(false); setActiveStationId(''); setPlayingStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Плейлист очищен'); } });
+    setConfirmData({ 
+      message: 'Очистить весь плейлист?', 
+      confirmText: 'Очистить',
+      isDanger: true,
+      onConfirm: () => { setStations([]); setFavorites([]); setOnlyFavoritesMode(false); setActiveStationId(''); setPlayingStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Плейлист очищен'); } 
+    });
     setShowConfirmModal(true);
   };
 
   const handleDemo = () => {
-    setConfirmData({ message: 'Добавить стандартный список?', onConfirm: () => { setStations(DEFAULT_STATIONS); if (DEFAULT_STATIONS.length > 0) { setActiveStationId(DEFAULT_STATIONS[0].id); } setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); hapticNotification('success'); } });
+    setConfirmData({ 
+      message: 'Добавить стандартный список?', 
+      confirmText: 'Добавить',
+      isDanger: false,
+      onConfirm: () => { setStations(DEFAULT_STATIONS); if (DEFAULT_STATIONS.length > 0) { setActiveStationId(DEFAULT_STATIONS[0].id); } setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); hapticNotification('success'); } 
+    });
+    setShowConfirmModal(true);
+  };
+
+  const handleDelete = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setConfirmData({
+      message: 'Удалить эту станцию?',
+      confirmText: 'Удалить',
+      isDanger: true,
+      onConfirm: () => {
+        setStations(prev => prev.filter(s => s.id !== id));
+        setFavorites(prev => prev.filter(fid => fid !== id));
+        if (playingStationId === id) stop();
+        hapticImpact('heavy'); setSnackbar('Станция удалена');
+      }
+    });
     setShowConfirmModal(true);
   };
 
@@ -304,9 +320,7 @@ export const App: React.FC = () => {
     const url = sanitizeUrl(formData.get('url') as string);
     const coverUrl = sanitizeUrl(formData.get('coverUrl') as string);
     const tags = (formData.get('tags') as string).split(',').map(t => t.trim().substring(0, 20)).filter(Boolean);
-    
     if (!name || !url) return;
-    
     if (editingStation) { 
         setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl, tags } : s)); 
         setEditingStation(null); setSnackbar('Обновлено'); 
@@ -318,9 +332,14 @@ export const App: React.FC = () => {
     setShowEditor(false); hapticImpact('light');
   };
 
+  useEffect(() => { if (showEditor) { setEditorPreviewUrl(editingStation?.coverUrl || ''); setEditorName(editingStation?.name || ''); setEditorTags(editingStation?.tags?.join(', ') || ''); } }, [showEditor, editingStation]);
+
+  // Стабильные константы переходов
+  const modalTransition = { type: 'tween', ease: 'easeOut', duration: 0.3 };
+
   return (
-    <div className="flex flex-col min-h-screen text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212] transition-colors duration-300 overflow-hidden">
-      <div className="flex-1 flex flex-col w-full max-w-5xl mx-auto md:px-6">
+    <div className="fixed inset-0 flex flex-col text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212] transition-colors duration-300 overflow-hidden h-[var(--tg-viewport-height,100vh)] w-full">
+      <div className="flex-1 flex flex-col w-full max-w-5xl mx-auto md:px-6 h-full relative z-0">
         
         <header className="flex items-center justify-between px-6 py-4 md:py-6 bg-white dark:bg-[#1f1f1f] md:bg-transparent dark:md:bg-transparent shadow-md md:shadow-none z-10 shrink-0 border-b md:border-none border-gray-100 dark:border-gray-800" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)' }}>
           <div className="flex items-center gap-3 cursor-pointer group" onClick={() => setShowAboutModal(true)}>
@@ -329,14 +348,14 @@ export const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-1 md:gap-3">
             <RippleButton onClick={toggleOnlyFavoritesMode} disabled={!hasStations} className={`w-[38px] md:w-[44px] h-[38px] md:h-[44px] flex items-center justify-center rounded-full transition-all ${!hasStations ? 'opacity-20 pointer-events-none' : onlyFavoritesMode ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-500 scale-110 shadow-sm' : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5'}`}><Icons.Star /></RippleButton>
-            <motion.button layout disabled={!hasStations} onClick={() => setShowSleepTimerModal(true)} className={`ripple h-[38px] md:h-[44px] rounded-full relative flex items-center justify-center transition-all ${!hasStations ? 'w-[38px] opacity-20 pointer-events-none' : (sleepTimerEndDate ? 'bg-blue-600 dark:bg-blue-500 text-white px-4' : 'w-[38px] md:w-[44px] text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5')}`}>
+            <button disabled={!hasStations} onClick={() => setShowSleepTimerModal(true)} className={`ripple h-[38px] md:h-[44px] rounded-full relative flex items-center justify-center transition-all ${!hasStations ? 'w-[38px] opacity-20 pointer-events-none' : (sleepTimerEndDate ? 'bg-blue-600 dark:bg-blue-500 text-white px-4' : 'w-[38px] md:w-[44px] text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5')}`}>
               {sleepTimerEndDate ? <span className="font-black text-sm">{Math.ceil((sleepTimerEndDate - Date.now()) / 60000)}m</span> : <Icons.Timer />}
-            </motion.button>
+            </button>
             <RippleButton onClick={() => setShowPlaylist(true)} className="w-[38px] md:w-[44px] h-[38px] md:h-[44px] flex items-center justify-center rounded-full text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5"><Icons.List /></RippleButton>
           </div>
         </header>
 
-        <main className="flex-1 flex flex-col md:flex-row items-center justify-around md:justify-center md:gap-12 py-4 px-6 overflow-hidden relative">
+        <main className="flex-1 flex flex-col md:flex-row items-center justify-around md:justify-center md:gap-12 py-4 px-6 overflow-hidden relative h-full">
           <div className="relative w-full max-w-[340px] md:max-w-[420px] aspect-square shrink-0">
             {hasStations ? (
               <Swiper
@@ -423,11 +442,11 @@ export const App: React.FC = () => {
         </main>
       </div>
 
-      <AnimatePresence>
+      <AnimatePresence mode="wait">
         {showPlaylist && (
-          <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-30 backdrop-blur-sm" onClick={closeAllModals} />
-            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.4 }} className={`fixed z-40 bg-white dark:bg-[#181818] flex flex-col shadow-2xl overflow-hidden ${isDesktop ? 'inset-0 m-auto w-full max-w-xl h-[80vh] rounded-[2.5rem]' : 'bottom-0 left-0 right-0 h-[88vh] rounded-t-[3rem] pb-10'}`}>
+          <div className="fixed inset-0 z-40 overflow-hidden pointer-events-auto">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={modalTransition} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={closeAllModals} />
+            <motion.div initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={modalTransition} className={`absolute bg-white dark:bg-[#181818] flex flex-col shadow-2xl overflow-hidden will-change-transform ${isDesktop ? 'inset-0 m-auto w-full max-w-xl h-[80vh] rounded-[2.5rem]' : 'bottom-0 left-0 right-0 h-[88vh] rounded-t-[3rem] pb-10'}`}>
               <div className="w-full flex items-center justify-between px-8 py-6 shrink-0 touch-none">
                 <h3 className="text-xl font-black">Плейлист</h3>
                 {!isDesktop && <div className="w-12 h-1.5 bg-gray-200 dark:bg-[#333] rounded-full" />}
@@ -437,7 +456,7 @@ export const App: React.FC = () => {
                 <button onClick={() => setPlaylistFilter('all')} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${playlistFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-[#252525] text-gray-500'}`}>Все</button>
                 <button onClick={() => setPlaylistFilter('favorites')} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${playlistFilter === 'favorites' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-[#252525] text-gray-500'}`}>Избранные</button>
               </div>
-              <div className="flex-1 overflow-y-auto px-6 flex flex-col pb-8">
+              <div className="flex-1 overflow-y-auto px-6 flex flex-col pb-8 no-scrollbar">
                 {stationsInPlaylist.length > 0 ? (
                   <Reorder.Group axis="y" values={stationsInPlaylist} onReorder={setStations} className="space-y-1">
                     {stationsInPlaylist.map(s => (
@@ -446,6 +465,7 @@ export const App: React.FC = () => {
                           <div className="flex-1 min-w-0"><p className={`font-bold text-sm truncate ${activeStationId === s.id ? 'text-blue-600' : ''}`}>{s.name}</p></div>
                           <div className="flex gap-1 ml-auto shrink-0">
                             <RippleButton onClick={(e) => toggleFavorite(s.id, e)} className={`p-2 rounded-lg ${favorites.includes(s.id) ? 'text-amber-500' : 'text-gray-300'}`}>{favorites.includes(s.id) ? <Icons.Star /> : <Icons.StarOutline />}</RippleButton>
+                            <RippleButton onClick={(e) => handleDelete(s.id, e)} className="p-2 text-gray-400/50 hover:text-red-500"><svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg></RippleButton>
                             <RippleButton onClick={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }} className="p-2 text-gray-400"><Icons.Settings /></RippleButton>
                           </div>
                         </Reorder.Item>
@@ -462,27 +482,27 @@ export const App: React.FC = () => {
                 </div>
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
       
       <AnimatePresence>
         {(showAboutModal || showEditor || showSleepTimerModal || showConfirmModal) && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6 overflow-hidden">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6 overflow-hidden pointer-events-auto">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={modalTransition} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
             <div className="relative w-full max-w-sm max-h-full overflow-y-auto no-scrollbar flex items-center justify-center pointer-events-none">
-              <div className="w-full pointer-events-auto">
+              <div className="w-full pointer-events-auto will-change-transform">
                 {showAboutModal && (
-                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl flex flex-col items-center">
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} transition={modalTransition} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl flex flex-col items-center">
                     <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-12 h-12" /></div>
                     <h3 className="text-2xl font-black mb-1 dark:text-white">Radio Player</h3>
-                    <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.4em] mb-8 dark:text-white/30">Build 2.0.3</p>
+                    <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.4em] mb-8 dark:text-white/30">Build 2.0.6</p>
                     <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-10 leading-relaxed">Кроссплатформенный плеер с защитой данных и таймером сна.</div>
                     <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Закрыть</RippleButton>
                   </motion.div>
                 )}
                 {showEditor && (
-                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl">
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} transition={modalTransition} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl">
                     <h3 className="text-2xl font-black mb-8 dark:text-white">{editingStation ? 'Редактирование' : 'Новая станция'}</h3>
                     <form onSubmit={addOrUpdateStation} className="flex flex-col gap-5">
                       <input name="name" required value={editorName} onChange={(e) => setEditorName(e.target.value)} placeholder="Название" className="w-full bg-gray-100 dark:bg-[#252525] rounded-xl px-5 py-4 outline-none font-bold text-sm dark:text-white" />
@@ -497,7 +517,7 @@ export const App: React.FC = () => {
                   </motion.div>
                 )}
                 {showSleepTimerModal && (
-                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl text-center">
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} transition={modalTransition} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl text-center">
                     <h3 className="text-2xl font-black mb-8 dark:text-white">Таймер сна</h3>
                     {timeRemaining && <div className="text-3xl font-black mb-6 text-blue-600">{timeRemaining}</div>}
                     <div className="grid grid-cols-2 gap-3 mb-8">
@@ -513,12 +533,14 @@ export const App: React.FC = () => {
                   </motion.div>
                 )}
                 {showConfirmModal && confirmData && (
-                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl">
+                  <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} transition={modalTransition} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl">
                     <h3 className="text-xl font-black mb-4 dark:text-white">Подтвердите</h3>
                     <p className="font-bold text-gray-500 dark:text-gray-400 mb-10">{confirmData.message}</p>
                     <div className="flex gap-4">
                       <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-[#252525] text-gray-500 rounded-2xl font-black">Отмена</RippleButton>
-                      <RippleButton onClick={() => { confirmData.onConfirm(); closeAllModals(); }} className="flex-1 py-4 bg-red-500 text-white rounded-2xl font-black shadow-lg shadow-red-500/20">Удалить</RippleButton>
+                      <RippleButton onClick={() => { confirmData.onConfirm(); closeAllModals(); }} className={`flex-1 py-4 text-white rounded-2xl font-black shadow-lg ${confirmData.isDanger ? 'bg-red-500 shadow-red-500/20' : 'bg-blue-600 shadow-blue-600/20'}`}>
+                        {confirmData.confirmText}
+                      </RippleButton>
                     </div>
                   </motion.div>
                 )}
@@ -530,7 +552,7 @@ export const App: React.FC = () => {
 
       <AnimatePresence>
         {snackbar && (
-          <motion.div initial={{ opacity: 0, y: 50, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }} exit={{ opacity: 0, y: 50, x: '-50%' }} className="fixed bottom-10 left-1/2 z-[70] w-[calc(100%-3rem)] max-w-sm px-8 py-5 rounded-[2rem] font-black bg-gray-900 text-white flex items-center justify-between shadow-2xl">
+          <motion.div initial={{ opacity: 0, y: 30, x: '-50%' }} animate={{ opacity: 1, y: 0, x: '-50%' }} exit={{ opacity: 0, y: 30, x: '-50%' }} transition={modalTransition} className="fixed bottom-10 left-1/2 z-[100] w-[calc(100%-3rem)] max-w-sm px-8 py-5 rounded-[2rem] font-black bg-gray-900 text-white flex items-center justify-between shadow-2xl pointer-events-auto">
             <span className="truncate pr-4 text-sm uppercase">{snackbar}</span>
             <button onClick={() => setSnackbar(null)} className="text-blue-400 font-black uppercase text-xs">OK</button>
           </motion.div>
