@@ -1,8 +1,7 @@
 
-// Build: 2.0.6
-// - Fixed: Modal transition stability by switching from spring to tween.
-// - UI: Added will-change and improved overscroll behavior for smoother feel.
-// - Fix: Balanced z-indexing for snacks and modals.
+// Build: 2.0.8
+// - Removed: "Шаблон JSON" button and handleCopyTemplate function.
+// - UI: Streamlined "No Stations" view.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
@@ -259,24 +258,6 @@ export const App: React.FC = () => {
     } catch (e) { setSnackbar('Нужен доступ к буферу'); }
   };
 
-  const handleCopyTemplate = useCallback(() => {
-    const template = `[
-  {
-    "name": "Radio Name",
-    "streamUrl": "https://url.to/stream.mp3",
-    "coverUrl": "https://url.to/cover.jpg",
-    "tags": ["genre1", "genre2"]
-  }
-]`;
-    navigator.clipboard.writeText(template).then(() => {
-      hapticNotification('success');
-      setSnackbar('Шаблон скопирован!');
-    }).catch(() => {
-      setSnackbar('Ошибка копирования');
-      hapticNotification('error');
-    });
-  }, [hapticNotification]);
-
   const handleReset = () => {
     setConfirmData({ 
       message: 'Очистить весь плейлист?', 
@@ -399,7 +380,6 @@ export const App: React.FC = () => {
                         <RippleButton onClick={handleImport} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">Импорт JSON</RippleButton>
                         <RippleButton onClick={handleDemo} className="py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">Демо</RippleButton>
                       </div>
-                      <RippleButton onClick={handleCopyTemplate} className="py-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black border border-white/5 text-xs opacity-80">Добавить, копировать пустой шаблон</RippleButton>
                     </div>
                   </div>
                 </div>
@@ -496,7 +476,7 @@ export const App: React.FC = () => {
                   <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} transition={modalTransition} className="bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-10 shadow-2xl flex flex-col items-center">
                     <div className="w-20 h-20 bg-blue-600 text-white rounded-3xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-12 h-12" /></div>
                     <h3 className="text-2xl font-black mb-1 dark:text-white">Radio Player</h3>
-                    <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.4em] mb-8 dark:text-white/30">Build 2.0.6</p>
+                    <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.4em] mb-8 dark:text-white/30">Build 2.0.8</p>
                     <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-10 leading-relaxed">Кроссплатформенный плеер с защитой данных и таймером сна.</div>
                     <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Закрыть</RippleButton>
                   </motion.div>
