@@ -1,7 +1,8 @@
 
-// Build: 2.1.9
-// - Fix: Automatic stream switching on swipe while playing.
-// - Feature: Improved Google Cast HLS compatibility for Synthwave station.
+// Build: 2.2.1
+// - Feature: Player volume slider now controls TV volume during Cast.
+// - Feature: HLS (m3u8) Google Cast fix (Mime-type vnd.apple.mpegurl).
+// - Logic: Phone/browser local audio is fully muted when casting.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -278,8 +279,6 @@ export const App: React.FC = () => {
 
   const handleCast = useCallback(() => {
     hapticImpact('light');
-    
-    // ВАЖНО: вызываем promptCast напрямую для сохранения User Gesture.
     promptCast().catch((err: any) => {
       setSnackbar(normalizeCastError(err));
       hapticNotification('warning');
@@ -427,8 +426,10 @@ export const App: React.FC = () => {
         case ' ': e.preventDefault(); handleTogglePlay(); break;
         case 'arrowleft': navigateStation('prev'); break;
         case 'arrowright': navigateStation('next'); break;
-        case 'arrowup': e.preventDefault(); setVolume(prev => Math.min(1, prev + 0.05)); break;
-        case 'arrowdown': e.preventDefault(); setVolume(prev => Math.max(0, prev - 0.05)); break;
+        // Fix: Use direct volume value instead of functional update since useAudio's setVolume expects a number.
+        case 'arrowup': e.preventDefault(); setVolume(Math.min(1, volume + 0.05)); break;
+        // Fix: Use direct volume value instead of functional update since useAudio's setVolume expects a number.
+        case 'arrowdown': e.preventDefault(); setVolume(Math.max(0, volume - 0.05)); break;
         case 'm': case 'ь':
           if (volume > 0) { lastNonZeroVolumeRef.current = volume; setVolume(0); }
           else { setVolume(lastNonZeroVolumeRef.current || 0.5); }
@@ -572,7 +573,6 @@ export const App: React.FC = () => {
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) {
                   setActiveStationId(targetStation.id);
-                  // Если плеер играл или грузился, при свайпе переключаем playingStationId
                   if (status === 'playing' || status === 'loading') {
                     setPlayingStationId(targetStation.id);
                   }
@@ -633,9 +633,10 @@ export const App: React.FC = () => {
                     <h2 className="text-3xl font-black mb-1 truncate leading-tight dark:text-white">{activeStation?.name || 'Пусто'}</h2>
                     <p className="text-[10px] opacity-40 dark:opacity-60 uppercase tracking-[0.2em] font-black dark:text-white/80">
                       {!activeStation ? 'Выберите источник' :
-                        (playingStationId === activeStationId && status === 'playing' ? 'В эфире' :
-                          playingStationId === activeStationId && status === 'loading' ? 'Загрузка...' :
-                            'Пауза')}
+                        (castState === 'connected' ? 'Трансляция активна' :
+                          playingStationId === activeStationId && status === 'playing' ? 'В эфире' :
+                            playingStationId === activeStationId && status === 'loading' ? 'Загрузка...' :
+                              'Пауза')}
                     </p>
                   </motion.div>
                 </AnimatePresence>
@@ -650,7 +651,16 @@ export const App: React.FC = () => {
                   <Icons.Cast />
                 </RippleButton>
 
-                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="flex-1 h-2 bg-gray-200 dark:bg-[#2c2c2c] rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.01" 
+                  value={volume} 
+                  onChange={(e) => setVolume(parseFloat(e.target.value))} 
+                  className="flex-1 h-2 bg-gray-200 dark:bg-[#2c2c2c] rounded-full appearance-none accent-blue-600" 
+                  disabled={!canPlay} 
+                />
               </div>
 
               <div className="w-full max-w-[360px] flex items-center justify-around mt-2">
@@ -725,7 +735,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.1.9</p>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.2.1</p>
               <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, трансляция на ТВ и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Понятно</RippleButton>
             </motion.div>
