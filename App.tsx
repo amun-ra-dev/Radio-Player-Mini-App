@@ -1,8 +1,8 @@
 
-// Build: 2.0.7
-// - UI: Cover is now strictly contained within a defined physical "block" container.
-// - Animation: Refined Creative Effect for 60FPS feel with zero-peeking of adjacent slides.
-// - Fix: Corrected custom timer input handler.
+// Build: 2.0.9
+// - UI: Slides now move freely across the layout width, not clipped by the central container.
+// - Transition: Smooth "fly-out" effect where each cover behaves as an independent physical object.
+// - Performance: Optimized for mobile gestures with minimal paint area.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -523,78 +523,79 @@ export const App: React.FC = () => {
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-around py-4 overflow-hidden relative">
-        {/* Carousel (Карусель) - Strictly Contained by Block, 60FPS */}
-        <div className="relative w-[340px] aspect-square shrink-0">
-          {hasStations ? (
-            <Swiper
-              onSwiper={setSwiperInstance}
-              onSlideChange={(swiper) => {
-                if (isReorderingRef.current) return;
-                const targetStation = displayedStations[swiper.realIndex];
-                if (targetStation) {
-                    setActiveStationId(targetStation.id);
-                    if (status === 'playing' || status === 'loading') {
-                        setPlayingStationId(targetStation.id);
-                    }
-                }
-                hapticImpact('light');
-              }}
-              loop={displayedStations.length > 1}
-              effect={'creative'}
-              grabCursor={true}
-              slidesPerView={1}
-              watchSlidesProgress={true}
-              touchReleaseOnEdges={true}
-              updateOnWindowResize={true}
-              creativeEffect={{
-                limitProgress: 1,
-                perspective: true,
-                prev: {
-                  translate: ['-100%', 0, -10],
-                  opacity: 0,
-                  scale: 0.95,
-                },
-                next: {
-                  translate: ['100%', 0, 0],
-                  opacity: 0,
-                  scale: 1,
-                },
-              }}
-              modules={[EffectCreative, Keyboard]}
-              keyboard={{ enabled: true }}
-              className="mySwiper w-full h-full overflow-hidden will-change-transform rounded-[2.5rem] transform-gpu isolate"
-              style={{ clipPath: 'inset(0 round 2.5rem)' }}
-            >
-              {displayedStations.map((station) => (
-                <SwiperSlide key={station.id} className="w-full h-full flex justify-center transform-gpu overflow-hidden">
-                  <div className={`relative w-full h-full bg-black ${canPlay ? 'cursor-pointer' : 'cursor-default'} transform-gpu backface-hidden isolate`} onClick={() => canPlay && handleTogglePlay()}>
-                    <StationCover station={station} className="w-full h-full" />
-                    <div className="absolute bottom-6 right-6 z-20" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
-                      <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
-                        {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
-                      </RippleButton>
+        {/* Carousel (Карусель) - Slides move completely, not clipped by parent block */}
+        <div className="relative w-full flex justify-center shrink-0">
+          <div className="relative w-[340px] aspect-square">
+            {hasStations ? (
+              <div className="w-full h-full overflow-visible transform-gpu isolate" style={{ contain: 'none' }}>
+                  <Swiper
+                    onSwiper={setSwiperInstance}
+                    onSlideChange={(swiper) => {
+                      if (isReorderingRef.current) return;
+                      const targetStation = displayedStations[swiper.realIndex];
+                      if (targetStation) {
+                          setActiveStationId(targetStation.id);
+                          if (status === 'playing' || status === 'loading') {
+                              setPlayingStationId(targetStation.id);
+                          }
+                      }
+                      hapticImpact('light');
+                    }}
+                    loop={displayedStations.length > 1}
+                    effect={'creative'}
+                    grabCursor={true}
+                    slidesPerView={1}
+                    watchSlidesProgress={true}
+                    touchReleaseOnEdges={true}
+                    updateOnWindowResize={true}
+                    creativeEffect={{
+                      limitProgress: 1,
+                      perspective: true,
+                      prev: {
+                        translate: ['-100%', 0, 0],
+                        opacity: 0,
+                        scale: 0.9,
+                      },
+                      next: {
+                        translate: ['100%', 0, 0],
+                        opacity: 1,
+                        scale: 1,
+                      },
+                    }}
+                    modules={[EffectCreative, Keyboard]}
+                    keyboard={{ enabled: true }}
+                    className="mySwiper w-full h-full !overflow-visible will-change-transform"
+                  >
+                    {displayedStations.map((station) => (
+                      <SwiperSlide key={station.id} className="w-full h-full flex justify-center transform-gpu">
+                        <div className={`relative w-full h-full bg-black rounded-[2.5rem] shadow-2xl dark:shadow-black/60 overflow-hidden ${canPlay ? 'cursor-pointer' : 'cursor-default'} transform-gpu backface-hidden isolate`} onClick={() => canPlay && handleTogglePlay()}>
+                          <StationCover station={station} className="w-full h-full" />
+                          <div className="absolute bottom-6 right-6 z-20" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
+                            <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
+                              {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
+                            </RippleButton>
+                          </div>
+                        </div>
+                      </SwiperSlide>
+                    ))}
+                  </Swiper>
+              </div>
+            ) : (
+              <div className="w-full h-full">
+                <div className="w-full aspect-square mx-auto rounded-[2.5rem] overflow-hidden shadow-2xl bg-[var(--tg-theme-button-color,#2481cc)] flex flex-col items-center justify-center text-center p-8">
+                  <h2 className="text-[var(--tg-theme-button-text-color,#ffffff)] text-3xl font-black mb-2">Нет станций</h2>
+                  <p className="text-[var(--tg-theme-button-text-color,#ffffff)] text-sm font-medium mb-8">Добавьте первую станцию в плейлист</p>
+                  <div className="flex flex-col gap-4 w-full">
+                    <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-white/20 hover:bg-white/30 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black shadow-lg">Добавить станцию</RippleButton>
+                    <div className="grid grid-cols-2 gap-3">
+                      <RippleButton onClick={handleImport} className="py-4 bg-white/10 hover:bg-white/20 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black">Импорт JSON</RippleButton>
+                      <RippleButton onClick={handleDemo} className="py-4 bg-white/10 hover:bg-white/20 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black">Демо</RippleButton>
                     </div>
-                  </div>
-                </SwiperSlide>
-              ))}
-            </Swiper>
-          ) : (
-            <div className="w-full h-full">
-              <div className="w-full aspect-square mx-auto rounded-[2.5rem] overflow-hidden shadow-2xl bg-[var(--tg-theme-button-color,#2481cc)] flex flex-col items-center justify-center text-center p-8">
-                <h2 className="text-[var(--tg-theme-button-text-color,#ffffff)] text-3xl font-black mb-2">Нет станций</h2>
-                <p className="text-[var(--tg-theme-button-text-color,#ffffff)] text-sm font-medium mb-8">Добавьте первую станцию в плейлист</p>
-                <div className="flex flex-col gap-4 w-full">
-                  <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-white/20 hover:bg-white/30 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black shadow-lg">Добавить станцию</RippleButton>
-                  <div className="grid grid-cols-2 gap-3">
-                    <RippleButton onClick={handleImport} className="py-4 bg-white/10 hover:bg-white/20 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black">Импорт JSON</RippleButton>
-                    <RippleButton onClick={handleDemo} className="py-4 bg-white/10 hover:bg-white/20 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black">Демо</RippleButton>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
-          {/* External shadow for the block */}
-          {hasStations && <div className="absolute inset-0 rounded-[2.5rem] shadow-2xl pointer-events-none z-0 dark:shadow-black/60" />}
+            )}
+          </div>
         </div>
 
         {/* Info & Controls Area */}
@@ -692,7 +693,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center transform-gpu">
               <div className="w-16 h-16 bg-[var(--tg-theme-button-color,#2481cc)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.0.7</p>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.0.9</p>
               <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-[var(--tg-theme-button-color,#2481cc)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black shadow-lg">Понятно</RippleButton>
             </motion.div>
