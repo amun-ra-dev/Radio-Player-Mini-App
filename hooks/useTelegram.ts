@@ -67,6 +67,17 @@ export const useTelegram = () => {
       } catch {}
     };
 
+    const lockPortraitOrientation = () => {
+      try {
+        // Блокировка ориентации (доступно в Bot API 8.0+)
+        if (typeof tg.lockOrientation === 'function') {
+          tg.lockOrientation('portrait');
+        }
+      } catch (e) {
+        console.warn("Failed to lock orientation:", e);
+      }
+    };
+
     const requestFullscreenSafe = () => {
       try {
         if (typeof tg.requestFullscreen === 'function') tg.requestFullscreen();
@@ -77,7 +88,7 @@ export const useTelegram = () => {
       setIsExpanded(Boolean(tg.isExpanded));
       applyInsets();
       applyViewport();
-      applyTheme(); // Обновляем тему при изменении параметров
+      applyTheme();
     };
 
     if (isMobile) {
@@ -85,9 +96,13 @@ export const useTelegram = () => {
         tg.expand();
       } catch {}
 
+      lockPortraitOrientation();
       requestFullscreenSafe();
 
-      const once = () => requestFullscreenSafe();
+      const once = () => {
+        requestFullscreenSafe();
+        lockPortraitOrientation();
+      };
       window.addEventListener('pointerdown', once, { once: true, passive: true });
       window.addEventListener('touchstart', once, { once: true, passive: true });
     }
