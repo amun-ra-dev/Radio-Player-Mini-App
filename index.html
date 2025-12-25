@@ -2,11 +2,12 @@
 <!DOCTYPE html>
 <html lang="ru">
 <head>
-    <!-- App Version 1.9.81 -->
+    <!-- App Version 2.1.1 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Radio Player</title>
-    <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+    <!-- Latest stable Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js?20"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -16,7 +17,8 @@
         }
       }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest" crossorigin="anonymous"></script>
+    <!-- Use specific version of hls.js for stability -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.8/dist/hls.min.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -31,11 +33,18 @@
           --tg-safe-left: env(safe-area-inset-left, 0px);
           --tg-safe-right: env(safe-area-inset-right, 0px);
         }
-        html, body { height: 100%; margin: 0; padding: 0; }
+        html, body { 
+          height: 100%; 
+          margin: 0; 
+          padding: 0; 
+          overflow: hidden; 
+          overscroll-behavior: none; 
+          -webkit-user-select: none;
+          user-select: none;
+        }
         body {
             font-family: 'Roboto', sans-serif;
             -webkit-tap-highlight-color: transparent;
-            overflow: hidden;
             background-color: var(--tg-theme-bg-color, #ffffff);
             color: var(--tg-theme-text-color, #222222);
             height: var(--tg-viewport-height, 100vh);
@@ -122,5 +131,15 @@
     </div>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
+    <script>
+      // Suppression for generic "Script error" logging to avoid cluttering Telegram console
+      // while providing more info locally.
+      window.onerror = function(message, source, lineno, colno, error) {
+        if (message === 'Script error.') {
+          console.warn('Cross-origin script error captured. Ensure CORS headers are correct on external resources.');
+        }
+        return false;
+      };
+    </script>
 </body>
 </html>
