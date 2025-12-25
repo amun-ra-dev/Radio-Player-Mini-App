@@ -141,9 +141,8 @@ export const useAudio = (streamUrl: string | null) => {
       audio.preload = "none";
       audio.crossOrigin = "anonymous";
       
-      // Настройка атрибутов для Remote Playback
-      (audio as any).xComponent = 'audio';
-      (audio as any).remotePlayback = true;
+      // КРИТИЧНО: Разрешаем Remote Playback
+      audio.disableRemotePlayback = false;
       
       audio.onplaying = () => { setStatus('playing'); retryCountRef.current = 0; };
       audio.onpause = () => { setStatus(prev => (prev === 'loading' || shouldBePlayingRef.current) ? 'loading' : 'paused'); };
@@ -189,11 +188,16 @@ export const useAudio = (streamUrl: string | null) => {
   }, [status, stop, playAudio]);
 
   const promptCast = useCallback(async () => {
-    if (audioRef.current && (audioRef.current as any).remote) {
+    const audio = audioRef.current;
+    if (audio && (audio as any).remote) {
       try {
-        await (audioRef.current as any).remote.prompt();
+        // Если src пустой, браузер может проигнорировать вызов. 
+        // Подставляем текущий URL если он есть.
+        if (!audio.src && streamUrl) {
+          audio.src = streamUrl;
+        }
+        await (audio as any).remote.prompt();
       } catch (e: any) {
-        // Если пользователь просто закрыл окно выбора устройства, это не ошибка приложения
         const isDismissed = e.name === 'NotAllowedError' || (e.message && e.message.toLowerCase().includes('dismissed'));
         if (!isDismissed) {
           console.error("Remote playback prompt failed", e);
@@ -203,10 +207,12 @@ export const useAudio = (streamUrl: string | null) => {
     } else {
       throw new Error("Remote playback not supported");
     }
-  }, []);
+  }, [streamUrl]);
 
   const isCastSupported = useCallback(() => {
-    return !!(audioRef.current && (audioRef.current as any).remote);
+    const audio = audioRef.current;
+    // Проверяем наличие API и то, что оно не отключено
+    return !!(audio && (audio as any).remote && audio.disableRemotePlayback === false);
   }, []);
 
   return {
