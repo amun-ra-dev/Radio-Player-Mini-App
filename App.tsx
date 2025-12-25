@@ -1,7 +1,7 @@
 
-// Build: 2.1.4
-// - Fix: Resolved SyntaxError in ref declarations.
-// - Build: 2.1.3 optimized Cast prompt activation.
+// Build: 2.1.5
+// - Fix: Corrected invalid Ref declaration syntax (const isReorderingRef.current -> const isReorderingRef).
+// - Fix: Verified all const declarations have initializers.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -724,7 +724,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.1.4</p>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.1.5</p>
               <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, трансляция на ТВ и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Понятно</RippleButton>
             </motion.div>

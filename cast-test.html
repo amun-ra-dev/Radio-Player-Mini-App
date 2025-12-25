@@ -4,73 +4,180 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Cast Diagnostic</title>
+  <title>Cast Test</title>
   <style>
-    body { font-family: system-ui, sans-serif; padding: 20px; background: #f5f5f5; color: #333; line-height: 1.5; }
-    .card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
-    button { background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer; }
-    button:disabled { background: #ccc; }
-    pre { background: #eee; padding: 10px; border-radius: 8px; font-size: 12px; overflow: auto; max-height: 200px; }
-    .status { font-weight: bold; }
-    .ok { color: green; }
-    .error { color: red; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; padding: 16px; line-height: 1.35; }
+    button { padding: 12px 14px; font-weight: 700; margin: 6px 6px 6px 0; }
+    code, pre { background: #111; color: #eee; padding: 10px; border-radius: 10px; display: block; overflow: auto; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; }
+    .ok { color: #0a0; font-weight: 800; }
+    .bad { color: #a00; font-weight: 800; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h2>Диагностика Remote Playback</h2>
-    <p>Браузер поддерживает API: <span id="apiSupport" class="status">Проверка...</span></p>
-    <p>Устройства доступны: <span id="availability" class="status">Ожидание...</span></p>
-    <button id="btnPrompt">Открыть выбор устройства</button>
+  <h2>Google Cast — диагностика</h2>
+  <p>Открывай в <b>Chrome Android</b> в той же Wi-Fi сети, что и Chromecast/TV.</p>
+
+  <div class="row">
+    <button id="btnLoad">1) Загрузить Cast SDK</button>
+    <button id="btnSession">2) Request Session</button>
+    <button id="btnLoadMedia">3) Load Media (MP3)</button>
+    <button id="btnStop">Stop</button>
   </div>
 
-  <div class="card">
-    <h3>Лог событий</h3>
-    <pre id="log"></pre>
-  </div>
+  <p>Cast SDK: <span id="sdk" class="bad">not loaded</span></p>
+  <p>Cast State: <span id="state">-</span></p>
+  <p>Session: <span id="session">-</span></p>
 
-  <video id="testVideo" src="https://www.w3schools.com/html/mov_bbb.mp4" style="display:none"></video>
+  <h3>Лог</h3>
+  <pre id="log"></pre>
 
   <script>
-    const logEl = document.getElementById('log');
-    const apiSupportEl = document.getElementById('apiSupport');
-    const availabilityEl = document.getElementById('availability');
-    const btnPrompt = document.getElementById('btnPrompt');
-    const video = document.getElementById('testVideo');
+    var logEl = document.getElementById('log');
+    var sdkEl = document.getElementById('sdk');
+    var stateEl = document.getElementById('state');
+    var sessionEl = document.getElementById('session');
 
-    function log(msg) {
-      logEl.textContent += `[${new Date().toLocaleTimeString()}] ${msg}\n`;
+    function log() {
+      var args = Array.prototype.slice.call(arguments);
+      var s = args.map(function(a) {
+        if (typeof a === 'string') return a;
+        try { return JSON.stringify(a, null, 2); } catch (e) { return String(a); }
+      }).join(' ');
+      logEl.textContent += s + "\n";
       logEl.scrollTop = logEl.scrollHeight;
+      console.log.apply(console, args);
     }
 
-    if (video.remote) {
-      apiSupportEl.textContent = 'Да';
-      apiSupportEl.className = 'status ok';
-      log('Remote Playback API обнаружен');
-
-      video.remote.watchAvailability((available) => {
-        availabilityEl.textContent = available ? 'Да' : 'Нет';
-        availabilityEl.className = available ? 'status ok' : 'status error';
-        log('Доступность устройств: ' + available);
-      }).catch(err => {
-        availabilityEl.textContent = 'Не поддерживается watchAvailability';
-        log('Ошибка watchAvailability: ' + err.message);
+    function loadScript(src) {
+      return new Promise(function(resolve, reject) {
+        var existing = document.querySelector('script[src="' + src + '"]');
+        if (existing) return resolve(true);
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = function() { resolve(true); };
+        s.onerror = function() { reject(new Error('Script load failed: ' + src)); };
+        document.head.appendChild(s);
       });
-
-      btnPrompt.onclick = () => {
-        log('Нажата кнопка Prompt');
-        video.remote.prompt().then(() => {
-          log('Окно выбора успешно открыто');
-        }).catch(err => {
-          log('Ошибка prompt: ' + err.name + ' - ' + err.message);
-        });
-      };
-    } else {
-      apiSupportEl.textContent = 'Нет';
-      apiSupportEl.className = 'status error';
-      btnPrompt.disabled = true;
-      log('Remote Playback API НЕ поддерживается в этом браузере');
     }
+
+    var castReadyResolve = null;
+
+    var castReady = new Promise(function(r) {
+      castReadyResolve = r; 
+    });
+
+    window.__onGCastApiAvailable = function(isAvailable) {
+      log('__onGCastApiAvailable:', isAvailable);
+      if (typeof castReadyResolve === 'function') castReadyResolve(!!isAvailable);
+    };
+
+    async function ensureCast() {
+      try {
+        if (window.cast && window.cast.framework) return true;
+
+        await loadScript('https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1');
+
+        var ok = await Promise.race([
+          castReady,
+          new Promise(function(r) { setTimeout(function() { r(false); }, 8000); })
+        ]);
+
+        if (!ok || !(window.cast && window.cast.framework)) return false;
+
+        var ctx = window.cast.framework.CastContext.getInstance();
+        ctx.setOptions({
+          receiverApplicationId: window.chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID, 
+          autoJoinPolicy: window.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+        });
+
+        ctx.addEventListener(window.cast.framework.CastContextEventType.CAST_STATE_CHANGED, function(e) {
+          stateEl.textContent = e.castState;
+          log('CAST_STATE_CHANGED:', e.castState);
+        });
+
+        ctx.addEventListener(window.cast.framework.CastContextEventType.SESSION_STATE_CHANGED, function(e) {
+          sessionEl.textContent = e.sessionState;
+          log('SESSION_STATE_CHANGED:', e.sessionState);
+        });
+
+        stateEl.textContent = ctx.getCastState();
+        sdkEl.textContent = 'loaded';
+        sdkEl.className = 'ok';
+        return true;
+      } catch (e) {
+        log('ensureCast error:', String(e));
+        return false;
+      }
+    }
+
+    async function requestSession() {
+      var ok = await ensureCast();
+      if (!ok) { log('Cast SDK not available'); return; }
+      try {
+        await window.cast.framework.CastContext.getInstance().requestSession();
+        log('requestSession OK');
+      } catch (e) {
+        log('requestSession FAIL:', String(e));
+      }
+    }
+
+    function guessContentType(url) {
+      var u = (url || '').toLowerCase();
+      if (u.indexOf('.m3u8') !== -1) return 'application/x-mpegURL';
+      if (u.indexOf('.mp3') !== -1) return 'audio/mpeg';
+      if (u.indexOf('.aac') !== -1) return 'audio/aac';
+      if (u.indexOf('.m4a') !== -1) return 'audio/mp4';
+      if (u.indexOf('.mp4') !== -1) return 'video/mp4';
+      return 'audio/mpeg';
+    }
+
+    async function loadMedia() {
+      var ok = await ensureCast();
+      if (!ok) { log('Cast SDK not available'); return; }
+
+      var ctx = window.cast.framework.CastContext.getInstance();
+      var session = ctx.getCurrentSession();
+      if (!session) { log('No session. Click Request Session first.'); return; }
+
+      var url = 'https://stream03.pcradio.biz/mdsst_ru_1-hi';
+
+      try {
+        var mediaInfo = new window.chrome.cast.media.MediaInfo(url, guessContentType(url));
+        mediaInfo.metadata = new window.chrome.cast.media.MusicTrackMediaMetadata();
+        mediaInfo.metadata.title = 'Radio Stream Test';
+
+        var req = new window.chrome.cast.media.LoadRequest(mediaInfo);
+        req.autoplay = true;
+
+        await session.loadMedia(req);
+        log('loadMedia OK:', url);
+      } catch (e) {
+        log('loadMedia FAIL:', String(e), 'url=', url);
+      }
+    }
+
+    async function stopCast() {
+      try {
+        var ctx = window.cast && window.cast.framework && window.cast.framework.CastContext
+          ? window.cast.framework.CastContext.getInstance()
+          : null;
+        var session = ctx ? ctx.getCurrentSession() : null;
+        if (session) await session.endSession(true);
+        log('stopCast OK');
+      } catch (e) {
+        log('stopCast FAIL:', String(e));
+      }
+    }
+
+    document.getElementById('btnLoad').onclick = async function() { log('ensureCast =>', await ensureCast()); };
+    document.getElementById('btnSession').onclick = requestSession;
+    document.getElementById('btnLoadMedia').onclick = loadMedia;
+    document.getElementById('btnStop').onclick = stopCast;
+
+    log('UA:', navigator.userAgent);
+    log('HTTPS:', location.protocol);
   </script>
 </body>
 </html>
