@@ -1,7 +1,7 @@
 
-/* Base styles to fix build error */
+/* 60 FPS Performance Optimizations & Perfect Corners */
 :root {
-  --swiper-theme-color: var(--tg-theme-button-color, #2563eb);
+  --swiper-theme-color: var(--tg-theme-button-color, #2481cc);
 }
 
 body {
@@ -9,6 +9,43 @@ body {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* GPU Acceleration Classes */
+.transform-gpu {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.will-change-transform {
+  will-change: transform;
+}
+
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Perfect Corners Hack - Fixes subpixel bleeding */
+[class*="rounded-"] {
+  mask-image: -webkit-radial-gradient(white, black);
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+}
+
+/* Swiper Smoothness Fixes */
+.swiper-wrapper {
+  will-change: transform;
+  transform-style: preserve-3d;
+  transition-timing-function: cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+.swiper-slide {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+  transition-property: transform, opacity;
 }
 
 /* Системные цвета для инпутов Telegram */
