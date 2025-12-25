@@ -1,7 +1,7 @@
 {
-  "name": "Radio Player Pro",
-  "description": "Premium Telegram Mini App (Bot API 9.0) с поддержкой HLS, адаптивными Safe Areas и нативным управлением",
-  "version": "2.5.1",
+  "name": "Radio Player Mini App",
+  "description": "Telegram Mini App для прослушивания интернет-радио в стиле Flat Material с нативным управлением, поддержкой HLS и системой избранного",
+  "version": "1.9.65",
   "requestFramePermissions": [
     "microphone"
   ]
