@@ -192,8 +192,12 @@ export const useAudio = (streamUrl: string | null) => {
     if (audioRef.current && (audioRef.current as any).remote) {
       try {
         await (audioRef.current as any).remote.prompt();
-      } catch (e) {
-        console.error("Remote playback prompt failed", e);
+      } catch (e: any) {
+        // Если пользователь просто закрыл окно выбора устройства, это не ошибка приложения
+        const isDismissed = e.name === 'NotAllowedError' || (e.message && e.message.toLowerCase().includes('dismissed'));
+        if (!isDismissed) {
+          console.error("Remote playback prompt failed", e);
+        }
         throw e;
       }
     } else {
