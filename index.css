@@ -17,6 +17,8 @@ body {
   transform: translateZ(0);
   backface-visibility: hidden;
   perspective: 1000px;
+  -webkit-transform: translateZ(0);
+  -webkit-backface-visibility: hidden;
 }
 
 .will-change-transform {
@@ -28,10 +30,11 @@ body {
   -webkit-backface-visibility: hidden;
 }
 
-/* Perfect Corners Hack - Fixes subpixel bleeding */
+/* Perfect Corners Hack - Fixes subpixel bleeding and forces clipping */
 [class*="rounded-"] {
   mask-image: -webkit-radial-gradient(white, black);
   -webkit-mask-image: -webkit-radial-gradient(white, black);
+  overflow: hidden;
 }
 
 /* Swiper Smoothness Fixes */
@@ -46,6 +49,7 @@ body {
   -webkit-backface-visibility: hidden;
   transform-style: preserve-3d;
   transition-property: transform, opacity;
+  overflow: hidden; /* Ensure slide itself limits children */
 }
 
 /* Системные цвета для инпутов Telegram */
