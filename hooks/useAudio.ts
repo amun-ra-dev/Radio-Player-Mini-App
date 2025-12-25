@@ -7,6 +7,8 @@ declare const Hls: any;
 export const useAudio = (streamUrl: string | null) => {
   const [status, setStatus] = useState<PlayerStatus>('idle');
   const [volume, setVolume] = useState(0.5);
+  const [castAvailable, setCastAvailable] = useState(false);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hlsRef = useRef<any>(null);
   const retryCountRef = useRef(0);
@@ -14,6 +16,7 @@ export const useAudio = (streamUrl: string | null) => {
   
   const requestVersionRef = useRef(0);
   const currentLoadedUrlRef = useRef<string | null>(null);
+  const availabilityCallbackIdRef = useRef<number | null>(null);
 
   const playAudioRef = useRef<((overrideUrl?: string) => void) | null>(null);
 
@@ -23,7 +26,6 @@ export const useAudio = (streamUrl: string | null) => {
     if (retryCountRef.current < 3) {
       retryCountRef.current++;
       const delay = retryCountRef.current === 1 ? 1500 : retryCountRef.current === 2 ? 4000 : 8000;
-      console.log(`Audio error, retrying in ${delay}ms (attempt ${retryCountRef.current})...`);
       setTimeout(() => {
         if (shouldBePlayingRef.current) {
           playAudioRef.current?.();
@@ -140,8 +142,6 @@ export const useAudio = (streamUrl: string | null) => {
       const audio = new Audio();
       audio.preload = "none";
       audio.crossOrigin = "anonymous";
-      
-      // КРИТИЧНО: Разрешаем Remote Playback
       audio.disableRemotePlayback = false;
       
       audio.onplaying = () => { setStatus('playing'); retryCountRef.current = 0; };
@@ -149,10 +149,31 @@ export const useAudio = (streamUrl: string | null) => {
       audio.onwaiting = () => { if (shouldBePlayingRef.current) setStatus('loading'); };
       audio.onerror = handleAudioError;
       
+      // Настройка отслеживания устройств
+      const remote = (audio as any).remote;
+      if (remote && remote.watchAvailability) {
+        remote.watchAvailability((available: boolean) => {
+          setCastAvailable(available);
+        }).then((id: number) => {
+          availabilityCallbackIdRef.current = id;
+        }).catch(() => {
+          // Если watchAvailability не поддерживается, считаем что трансляция возможна всегда (кнопка будет активна)
+          setCastAvailable(true);
+        });
+      } else if (remote) {
+          setCastAvailable(true);
+      }
+
       audioRef.current = audio;
     }
 
-    return () => { stopAndCleanup(); };
+    return () => {
+      const audio = audioRef.current;
+      if (audio && (audio as any).remote && availabilityCallbackIdRef.current !== null) {
+          try { (audio as any).remote.cancelWatchAvailability(availabilityCallbackIdRef.current); } catch(e){}
+      }
+      stopAndCleanup();
+    };
   }, [handleAudioError, stopAndCleanup]);
 
   const lastEffectUrlRef = useRef<string | null>(null);
@@ -191,8 +212,6 @@ export const useAudio = (streamUrl: string | null) => {
     const audio = audioRef.current;
     if (audio && (audio as any).remote) {
       try {
-        // Если src пустой, браузер может проигнорировать вызов. 
-        // Подставляем текущий URL если он есть.
         if (!audio.src && streamUrl) {
           audio.src = streamUrl;
         }
@@ -211,9 +230,9 @@ export const useAudio = (streamUrl: string | null) => {
 
   const isCastSupported = useCallback(() => {
     const audio = audioRef.current;
-    // Проверяем наличие API и то, что оно не отключено
-    return !!(audio && (audio as any).remote && audio.disableRemotePlayback === false);
-  }, []);
+    // Возвращаем true если API доступно и есть найденные устройства (или поддержка watchAvailability отсутствует)
+    return !!(audio && (audio as any).remote && castAvailable);
+  }, [castAvailable]);
 
   return {
     status,
