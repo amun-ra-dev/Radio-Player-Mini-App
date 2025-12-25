@@ -17,6 +17,15 @@ export const useTelegram = () => {
 
     tg.ready();
 
+    // Нативная блокировка ориентации (API 7.0+)
+    try {
+      if (typeof tg.lockOrientation === 'function') {
+        tg.lockOrientation();
+      }
+    } catch (e) {
+      console.warn("Orientation locking is not supported in this Telegram version.");
+    }
+
     const setCssVar = (name: string, value: string) => {
       document.documentElement.style.setProperty(name, value);
     };
@@ -52,7 +61,6 @@ export const useTelegram = () => {
       document.body.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
       document.body.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#222222');
 
-      // Синхронизация Tailwind dark mode с темой Telegram
       if (tg.colorScheme === 'dark') {
         document.documentElement.classList.add('dark');
       } else {
@@ -77,19 +85,14 @@ export const useTelegram = () => {
       setIsExpanded(Boolean(tg.isExpanded));
       applyInsets();
       applyViewport();
-      applyTheme(); // Обновляем тему при изменении параметров
+      applyTheme();
     };
 
     if (isMobile) {
       try {
         tg.expand();
       } catch {}
-
       requestFullscreenSafe();
-
-      const once = () => requestFullscreenSafe();
-      window.addEventListener('pointerdown', once, { once: true, passive: true });
-      window.addEventListener('touchstart', once, { once: true, passive: true });
     }
 
     updateUIState();
