@@ -1,7 +1,7 @@
 
-// Build: 2.1.5
-// - Fix: Corrected invalid Ref declaration syntax (const isReorderingRef.current -> const isReorderingRef).
-// - Fix: Verified all const declarations have initializers.
+// Build: 2.1.9
+// - Fix: Automatic stream switching on swipe while playing.
+// - Feature: Improved Google Cast HLS compatibility for Synthwave station.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -154,6 +154,14 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
   );
 };
 
+const normalizeCastError = (e: any) => {
+  const s = String(e?.message || e || '');
+  if (/cancel|canceled|dismiss/i.test(s)) return 'Отменено';
+  if (/not available|sdk|framework/i.test(s)) return 'Cast недоступен в этом браузере (открой в Chrome)';
+  if (/no devices|not found|available/i.test(s)) return 'Устройства не найдены (проверь Wi-Fi/изоляцию сети)';
+  return 'Не удалось запустить трансляцию';
+};
+
 export const App: React.FC = () => {
   const { hapticImpact, hapticNotification, setBackButton, isMobile } = useTelegram();
 
@@ -270,21 +278,13 @@ export const App: React.FC = () => {
 
   const handleCast = useCallback(() => {
     hapticImpact('light');
-
-    if (!isCastSupported()) {
-      setSnackbar('Трансляция не поддерживается в этом приложении');
+    
+    // ВАЖНО: вызываем promptCast напрямую для сохранения User Gesture.
+    promptCast().catch((err: any) => {
+      setSnackbar(normalizeCastError(err));
       hapticNotification('warning');
-      return;
-    }
-
-    // ВАЖНО: Вызываем prompt немедленно для сохранения User Gesture
-    promptCast().catch((err) => {
-      if (err) {
-        setSnackbar('Не удалось найти устройства в сети');
-        hapticNotification('error');
-      }
     });
-  }, [hapticImpact, hapticNotification, isCastSupported, promptCast]);
+  }, [hapticImpact, hapticNotification, promptCast]);
 
   useEffect(() => {
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
@@ -532,11 +532,11 @@ export const App: React.FC = () => {
 
   const canPlay = Boolean(activeStation?.streamUrl);
 
-  // визуально подсветим cast, если connected
   const castBtnClass = useMemo(() => {
     if (!canPlay) return 'text-gray-200 dark:text-gray-800 pointer-events-none';
     if (!isCastSupported()) return 'text-gray-300 dark:text-gray-700 opacity-40';
     if (castState === 'connected') return 'text-blue-600 dark:text-blue-400';
+    if (castState === 'connecting') return 'text-blue-400 animate-pulse';
     if (!castAvailable) return 'text-gray-400/70 dark:text-gray-500/70';
     return 'text-gray-400 dark:text-gray-500 hover:text-blue-500';
   }, [canPlay, isCastSupported, castAvailable, castState]);
@@ -572,6 +572,7 @@ export const App: React.FC = () => {
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) {
                   setActiveStationId(targetStation.id);
+                  // Если плеер играл или грузился, при свайпе переключаем playingStationId
                   if (status === 'playing' || status === 'loading') {
                     setPlayingStationId(targetStation.id);
                   }
@@ -724,7 +725,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.1.5</p>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.1.9</p>
               <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, трансляция на ТВ и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Понятно</RippleButton>
             </motion.div>

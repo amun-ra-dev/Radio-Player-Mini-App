@@ -19,12 +19,16 @@ export const useAudio = (streamUrl: string | null) => {
 
   const playAudioRef = useRef<((overrideUrl?: string) => void) | null>(null);
 
+  // Cast refs
+  const castContextRef = useRef<any>(null);
+
   const handleAudioError = useCallback((_e?: any) => {
     if (!shouldBePlayingRef.current) return;
 
     if (retryCountRef.current < 3) {
       retryCountRef.current++;
-      const delay = retryCountRef.current === 1 ? 1500 : retryCountRef.current === 2 ? 4000 : 8000;
+      const delay = retryCountRef.current === 1 ? 2000 : retryCountRef.current === 2 ? 5000 : 10000;
+      console.warn(`Playback error, retrying in ${delay}ms... (Attempt ${retryCountRef.current})`);
       setTimeout(() => {
         if (shouldBePlayingRef.current && playAudioRef.current) {
           playAudioRef.current();
@@ -37,15 +41,57 @@ export const useAudio = (streamUrl: string | null) => {
     }
   }, []);
 
+  const sendMediaToCast = useCallback(async (url: string) => {
+    const session = castContextRef.current?.getCurrentSession();
+    if (!session) return;
+
+    const chrome = (window as any).chrome;
+    if (!chrome || !chrome.cast) return;
+
+    try {
+      // Использование более совместимых MIME-типов для Chromecast
+      let contentType = 'audio/mpeg';
+      if (url.toLowerCase().includes('.m3u8')) {
+        // Большинство современных Chromecast предпочитают vnd.apple.mpegurl для HLS
+        contentType = 'application/vnd.apple.mpegurl';
+      } else if (url.toLowerCase().includes('.aac')) {
+        contentType = 'audio/aac';
+      }
+
+      const mediaInfo = new chrome.cast.media.MediaInfo(url, contentType);
+      mediaInfo.metadata = new chrome.cast.media.MusicTrackMediaMetadata();
+      mediaInfo.metadata.title = 'Radio Player Stream';
+      mediaInfo.streamType = chrome.cast.media.StreamType.LIVE;
+      
+      const loadRequest = new chrome.cast.media.LoadRequest(mediaInfo);
+      loadRequest.autoplay = true;
+      
+      console.log('Casting media:', url, 'as', contentType);
+      await session.loadMedia(loadRequest);
+    } catch (e) {
+      console.error('Failed to load media on Cast', e);
+    }
+  }, []);
+
   const playAudio = useCallback(async (overrideUrl?: string) => {
     const urlToPlay = overrideUrl || streamUrl;
-    if (!urlToPlay || !audioRef.current) {
-        if (!urlToPlay) setStatus('idle');
+    if (!urlToPlay) {
+        setStatus('idle');
         return;
     }
 
     shouldBePlayingRef.current = true;
 
+    // Если подключен Cast, отправляем медиа туда
+    if (castState === 'connected') {
+      sendMediaToCast(urlToPlay);
+      setStatus('playing');
+      return;
+    }
+
+    if (!audioRef.current) return;
+
+    // Если URL тот же и мы уже в процессе, не перезагружаем
     if (urlToPlay === currentLoadedUrlRef.current && (status === 'playing' || status === 'loading')) {
       return;
     }
@@ -53,8 +99,12 @@ export const useAudio = (streamUrl: string | null) => {
     const currentVersion = ++requestVersionRef.current;
     currentLoadedUrlRef.current = urlToPlay;
     
+    // Очистка предыдущего HLS инстанса
     if (hlsRef.current) {
-      try { hlsRef.current.destroy(); } catch (e) { console.warn("Error destroying HLS instance:", e); }
+      try { 
+        hlsRef.current.detachMedia();
+        hlsRef.current.destroy(); 
+      } catch (e) { console.warn("Error destroying HLS instance:", e); }
       hlsRef.current = null;
     }
 
@@ -72,7 +122,8 @@ export const useAudio = (streamUrl: string | null) => {
           enableWorker: true,
           lowLatencyMode: true,
           backBufferLength: 60,
-          manifestLoadingMaxRetry: 2
+          manifestLoadingMaxRetry: 4,
+          levelLoadingMaxRetry: 4
         });
         hlsRef.current = hls;
         hls.loadSource(urlToPlay);
@@ -80,7 +131,9 @@ export const useAudio = (streamUrl: string | null) => {
         
         hls.on(GlobalHls.Events.MANIFEST_PARSED, async () => {
           if (currentVersion !== requestVersionRef.current) return;
-          try { await audio.play(); } catch (e: any) {
+          try { 
+            await audio.play(); 
+          } catch (e: any) {
             if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
               handleAudioError();
             }
@@ -98,8 +151,10 @@ export const useAudio = (streamUrl: string | null) => {
           }
         });
       } else {
+        // Нативное воспроизведение (iOS/Safari или обычный MP3)
         if (audio.src !== urlToPlay) {
           audio.src = urlToPlay;
+          audio.load();
         }
         
         if (currentVersion !== requestVersionRef.current) return;
@@ -108,6 +163,7 @@ export const useAudio = (streamUrl: string | null) => {
         } catch (e: any) {
           if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
             console.error("Native Playback failed:", e);
+            handleAudioError();
           }
         }
       }
@@ -116,15 +172,25 @@ export const useAudio = (streamUrl: string | null) => {
         handleAudioError();
       }
     }
-  }, [streamUrl, volume, handleAudioError, status]);
+  }, [streamUrl, volume, handleAudioError, status, castState, sendMediaToCast]);
 
   playAudioRef.current = playAudio;
+
+  // КРИТИЧЕСКИЙ ФИКС: Автоматическое переключение потока при смене streamUrl, если плеер активен
+  useEffect(() => {
+    if (shouldBePlayingRef.current && streamUrl && streamUrl !== currentLoadedUrlRef.current) {
+      playAudio(streamUrl);
+    }
+  }, [streamUrl, playAudio]);
 
   const stopAndCleanup = useCallback(() => {
     requestVersionRef.current++;
     currentLoadedUrlRef.current = null;
     if (hlsRef.current) {
-      try { hlsRef.current.destroy(); } catch (e) { console.warn("Error destroying HLS instance:", e); }
+      try { 
+        hlsRef.current.detachMedia();
+        hlsRef.current.destroy(); 
+      } catch (e) { console.warn("Error destroying HLS instance:", e); }
       hlsRef.current = null;
     }
     if (audioRef.current) {
@@ -132,6 +198,61 @@ export const useAudio = (streamUrl: string | null) => {
       audioRef.current.removeAttribute('src');
       audioRef.current.load();
     }
+
+    const session = castContextRef.current?.getCurrentSession();
+    if (session) {
+      try {
+        const remotePlayer = new (window as any).cast.framework.RemotePlayer();
+        const controller = new (window as any).cast.framework.RemotePlayerController(remotePlayer);
+        if (remotePlayer.isConnected) {
+            controller.playOrPause();
+        }
+      } catch(e) {}
+    }
+  }, []);
+
+  useEffect(() => {
+    const checkCast = () => {
+      const cast = (window as any).cast;
+      const chrome = (window as any).chrome;
+      
+      if (cast && cast.framework && chrome && chrome.cast) {
+        const context = cast.framework.CastContext.getInstance();
+        castContextRef.current = context;
+
+        try {
+          context.setOptions({
+            receiverApplicationId: chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+            autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED
+          });
+        } catch (e) {}
+
+        const updateCastState = (e: any) => {
+          const state = e.castState || context.getCastState();
+          setCastAvailable(state !== 'NO_DEVICES_AVAILABLE');
+          
+          if (state === 'CONNECTED') setCastState('connected');
+          else if (state === 'CONNECTING') setCastState('connecting');
+          else setCastState('disconnected');
+        };
+
+        context.addEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, updateCastState);
+        
+        const initialState = context.getCastState();
+        setCastAvailable(initialState !== 'NO_DEVICES_AVAILABLE');
+        if (initialState === 'CONNECTED') setCastState('connected');
+
+        return () => {
+          context.removeEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, updateCastState);
+        };
+      }
+    };
+
+    (window as any).__onGCastApiAvailable = (isAvailable: boolean) => {
+      if (isAvailable) checkCast();
+    };
+
+    checkCast();
   }, []);
 
   useEffect(() => {
@@ -149,11 +270,9 @@ export const useAudio = (streamUrl: string | null) => {
       const remote = (audio as any).remote;
       if (remote) {
         if (remote.state) setCastState(remote.state);
-        
         remote.onstatechange = () => {
           if (remote.state) setCastState(remote.state);
         };
-
         if (remote.watchAvailability) {
           remote.watchAvailability((available: boolean) => {
             setCastAvailable(available);
@@ -200,6 +319,18 @@ export const useAudio = (streamUrl: string | null) => {
   }, [status, stop, playAudio]);
 
   const promptCast = useCallback(async () => {
+    if (castContextRef.current) {
+      try {
+        await castContextRef.current.requestSession();
+        if (shouldBePlayingRef.current && streamUrl) {
+           sendMediaToCast(streamUrl);
+        }
+        return;
+      } catch (e) {
+        console.warn('Cast CAF request failed, falling back to native', e);
+      }
+    }
+
     const audio = audioRef.current;
     if (audio && (audio as any).remote) {
       try {
@@ -219,11 +350,13 @@ export const useAudio = (streamUrl: string | null) => {
     } else {
       throw new Error("Remote playback not supported");
     }
-  }, [streamUrl]);
+  }, [streamUrl, sendMediaToCast]);
 
   const isCastSupported = useCallback(() => {
     const audio = audioRef.current;
-    return !!(audio && (audio as any).remote);
+    const hasGoogleCast = !!((window as any).chrome && (window as any).chrome.cast);
+    const hasNativeRemote = !!(audio && (audio as any).remote);
+    return hasGoogleCast || hasNativeRemote;
   }, []);
 
   return {
