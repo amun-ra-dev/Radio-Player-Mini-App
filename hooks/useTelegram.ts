@@ -17,15 +17,6 @@ export const useTelegram = () => {
 
     tg.ready();
 
-    // Блокировка ориентации на мобильных устройствах (Portrait)
-    try {
-      if (typeof tg.lockOrientation === 'function') {
-        tg.lockOrientation();
-      }
-    } catch (e) {
-      console.warn("Native orientation lock failed:", e);
-    }
-
     const setCssVar = (name: string, value: string) => {
       document.documentElement.style.setProperty(name, value);
     };

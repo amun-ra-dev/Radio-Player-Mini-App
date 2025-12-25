@@ -1,8 +1,8 @@
 
-// Build: 2.2.1
-// - Feature: Player volume slider now controls TV volume during Cast.
-// - Feature: HLS (m3u8) Google Cast fix (Mime-type vnd.apple.mpegurl).
-// - Logic: Phone/browser local audio is fully muted when casting.
+// Build: 2.0.1
+// - Fix: Initial volume set to 50% (0.5).
+// - Feature: Full Dark Mode support synced with Telegram theme.
+// - UX: Refined dark mode color palette for Material design feel.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -97,7 +97,7 @@ interface ReorderItemProps {
   isActive: boolean;
   isPlaying: boolean;
   isFavorite: boolean;
-  status: any;
+  status: PlayerStatus;
   onSelect: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
@@ -155,14 +155,6 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
   );
 };
 
-const normalizeCastError = (e: any) => {
-  const s = String(e?.message || e || '');
-  if (/cancel|canceled|dismiss/i.test(s)) return 'Отменено';
-  if (/not available|sdk|framework/i.test(s)) return 'Cast недоступен в этом браузере (открой в Chrome)';
-  if (/no devices|not found|available/i.test(s)) return 'Устройства не найдены (проверь Wi-Fi/изоляцию сети)';
-  return 'Не удалось запустить трансляцию';
-};
-
 export const App: React.FC = () => {
   const { hapticImpact, hapticNotification, setBackButton, isMobile } = useTelegram();
 
@@ -178,7 +170,7 @@ export const App: React.FC = () => {
   });
 
   const [onlyFavoritesMode, setOnlyFavoritesMode] = useState<boolean>(() => localStorage.getItem('radio_only_favorites') === 'true');
-
+  
   const [activeStationId, setActiveStationId] = useState<string>(() => localStorage.getItem('radio_last_active') || '');
   const [playingStationId, setPlayingStationId] = useState<string>(() => localStorage.getItem('radio_last_playing') || '');
 
@@ -252,22 +244,11 @@ export const App: React.FC = () => {
     return stations.find(s => s.id === playingStationId) || null;
   }, [stations, playingStationId]);
 
-  const {
-    status,
-    volume,
-    setVolume,
-    togglePlay: baseTogglePlay,
-    play,
-    stop,
-    promptCast,
-    isCastSupported,
-    castAvailable,
-    castState,
-  } = useAudio(playingStation?.streamUrl || null);
+  const { status, volume, setVolume, togglePlay: baseTogglePlay, play, stop } = useAudio(playingStation?.streamUrl || null);
 
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
-
+    
     if (playingStationId === activeStationId && status !== 'idle') {
       baseTogglePlay();
     } else {
@@ -277,18 +258,10 @@ export const App: React.FC = () => {
     }
   }, [activeStationId, playingStationId, status, baseTogglePlay, activeStation, hapticImpact, play]);
 
-  const handleCast = useCallback(() => {
-    hapticImpact('light');
-    promptCast().catch((err: any) => {
-      setSnackbar(normalizeCastError(err));
-      hapticNotification('warning');
-    });
-  }, [hapticImpact, hapticNotification, promptCast]);
-
   useEffect(() => {
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
-    if (!activeStationId || !displayedStations.some(s => s.id === activeStationId)) {
-      setActiveStationId(displayedStations[0].id);
+    if (!activeStationId || !displayedStations.some(s => s.id === activeStationId)) { 
+        setActiveStationId(displayedStations[0].id); 
     }
   }, [displayedStations, activeStationId]);
 
@@ -347,21 +320,21 @@ export const App: React.FC = () => {
     const reorderedIds = new Set(reorderedItems.map(item => item.id));
     const newStations = [...reorderedItems, ...stations.filter(item => !reorderedIds.has(item.id))];
     setStations(newStations);
-
+    
     if (playingStationId) {
-      const displayed = !onlyFavoritesMode ? newStations : newStations.filter(s => favorites.includes(s.id));
-      const isPlayingVisible = displayed.some(s => s.id === playingStationId);
-
-      if (isPlayingVisible) {
-        setActiveStationId(playingStationId);
-      } else if (swiperInstance) {
+        const displayed = !onlyFavoritesMode ? newStations : newStations.filter(s => favorites.includes(s.id));
+        const isPlayingVisible = displayed.some(s => s.id === playingStationId);
+        
+        if (isPlayingVisible) {
+            setActiveStationId(playingStationId);
+        } else if (swiperInstance) {
+            const stationAtIdx = displayed[swiperInstance.realIndex];
+            if (stationAtIdx) setActiveStationId(stationAtIdx.id);
+        }
+    } else if (swiperInstance) {
+        const displayed = !onlyFavoritesMode ? newStations : newStations.filter(s => favorites.includes(s.id));
         const stationAtIdx = displayed[swiperInstance.realIndex];
         if (stationAtIdx) setActiveStationId(stationAtIdx.id);
-      }
-    } else if (swiperInstance) {
-      const displayed = !onlyFavoritesMode ? newStations : newStations.filter(s => favorites.includes(s.id));
-      const stationAtIdx = displayed[swiperInstance.realIndex];
-      if (stationAtIdx) setActiveStationId(stationAtIdx.id);
     }
 
     hapticImpact('light');
@@ -379,15 +352,15 @@ export const App: React.FC = () => {
     const nextMode = !onlyFavoritesMode;
     setOnlyFavoritesMode(nextMode); hapticImpact('medium');
     setSnackbar(nextMode ? 'Избранное: ВКЛ' : 'Избранное: ВЫКЛ');
-
+    
     if (swiperInstance) {
-      const nextList = nextMode ? stations.filter(s => favorites.includes(s.id)) : stations;
-      const targetIdx = Math.min(swiperInstance.realIndex, nextList.length - 1);
-      if (nextList[targetIdx]) {
-        setActiveStationId(nextList[targetIdx].id);
-      }
+        const nextList = nextMode ? stations.filter(s => favorites.includes(s.id)) : stations;
+        const targetIdx = Math.min(swiperInstance.realIndex, nextList.length - 1);
+        if (nextList[targetIdx]) {
+            setActiveStationId(nextList[targetIdx].id);
+        }
     }
-  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, favorites, stations, swiperInstance]);
+  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, activeStationId, favorites, stations, swiperInstance]);
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => {
     if (!swiperInstance) return;
@@ -399,12 +372,12 @@ export const App: React.FC = () => {
   const handleSelectStation = useCallback((station: Station) => {
     if (!station) return;
     if (activeStationId === station.id) {
-      handleTogglePlay();
+        handleTogglePlay();
     } else {
-      setActiveStationId(station.id);
-      setPlayingStationId(station.id);
-      hapticImpact('light');
-      play(station.streamUrl);
+        setActiveStationId(station.id);
+        setPlayingStationId(station.id);
+        hapticImpact('light');
+        play(station.streamUrl);
     }
   }, [activeStationId, handleTogglePlay, hapticImpact, play]);
 
@@ -426,14 +399,9 @@ export const App: React.FC = () => {
         case ' ': e.preventDefault(); handleTogglePlay(); break;
         case 'arrowleft': navigateStation('prev'); break;
         case 'arrowright': navigateStation('next'); break;
-        // Fix: Use direct volume value instead of functional update since useAudio's setVolume expects a number.
-        case 'arrowup': e.preventDefault(); setVolume(Math.min(1, volume + 0.05)); break;
-        // Fix: Use direct volume value instead of functional update since useAudio's setVolume expects a number.
-        case 'arrowdown': e.preventDefault(); setVolume(Math.max(0, volume - 0.05)); break;
-        case 'm': case 'ь':
-          if (volume > 0) { lastNonZeroVolumeRef.current = volume; setVolume(0); }
-          else { setVolume(lastNonZeroVolumeRef.current || 0.5); }
-          break;
+        case 'arrowup': e.preventDefault(); setVolume(prev => Math.min(1, prev + 0.05)); break;
+        case 'arrowdown': e.preventDefault(); setVolume(prev => Math.max(0, prev - 0.05)); break;
+        case 'm': case 'ь': if (volume > 0) { lastNonZeroVolumeRef.current = volume; setVolume(0); } else { setVolume(lastNonZeroVolumeRef.current || 0.5); } break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -517,9 +485,9 @@ export const App: React.FC = () => {
     const tagsStr = formData.get('tags') as string;
     const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
     if (!name || !url) return;
-    if (editingStation) {
-      setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s));
-      setEditingStation(null); setSnackbar('Обновлено');
+    if (editingStation) { 
+        setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s)); 
+        setEditingStation(null); setSnackbar('Обновлено'); 
     }
     else {
       const id = Math.random().toString(36).substr(2, 9);
@@ -533,18 +501,9 @@ export const App: React.FC = () => {
 
   const canPlay = Boolean(activeStation?.streamUrl);
 
-  const castBtnClass = useMemo(() => {
-    if (!canPlay) return 'text-gray-200 dark:text-gray-800 pointer-events-none';
-    if (!isCastSupported()) return 'text-gray-300 dark:text-gray-700 opacity-40';
-    if (castState === 'connected') return 'text-blue-600 dark:text-blue-400';
-    if (castState === 'connecting') return 'text-blue-400 animate-pulse';
-    if (!castAvailable) return 'text-gray-400/70 dark:text-gray-500/70';
-    return 'text-gray-400 dark:text-gray-500 hover:text-blue-500';
-  }, [canPlay, isCastSupported, castAvailable, castState]);
-
   return (
     <div className="flex flex-col overflow-hidden text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212]" style={{ height: 'var(--tg-viewport-height, 100vh)' }}>
-      {/* Header */}
+      {/* Header (Head) */}
       <div className="flex items-center justify-between px-6 bg-white dark:bg-[#1f1f1f] shadow-md z-10 shrink-0 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)', paddingBottom: '12px' }}>
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setShowAboutModal(true)}>
           <Logo className="w-8 h-8 text-blue-600 dark:text-blue-400" />
@@ -564,6 +523,7 @@ export const App: React.FC = () => {
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-around py-4 overflow-hidden relative">
+        {/* Carousel (Карусель) */}
         <div className="relative w-[340px] aspect-square shrink-0">
           {hasStations ? (
             <Swiper
@@ -572,10 +532,10 @@ export const App: React.FC = () => {
                 if (isReorderingRef.current) return;
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) {
-                  setActiveStationId(targetStation.id);
-                  if (status === 'playing' || status === 'loading') {
-                    setPlayingStationId(targetStation.id);
-                  }
+                    setActiveStationId(targetStation.id);
+                    if (status === 'playing' || status === 'loading') {
+                        setPlayingStationId(targetStation.id);
+                    }
                 }
                 hapticImpact('light');
               }}
@@ -586,8 +546,16 @@ export const App: React.FC = () => {
               creativeEffect={{
                 limitProgress: 3,
                 perspective: true,
-                prev: { translate: ['-120%', 0, 0], rotate: [0, 0, -20], opacity: 0 },
-                next: { translate: ['12px', 0, -100], scale: 0.9, opacity: 0.6 }
+                prev: {
+                  translate: ['-120%', 0, 0],
+                  rotate: [0, 0, -20],
+                  opacity: 0,
+                },
+                next: {
+                  translate: ['12px', 0, -100],
+                  scale: 0.9,
+                  opacity: 0.6,
+                },
               }}
               modules={[EffectCreative, Keyboard]}
               keyboard={{ enabled: true }}
@@ -623,56 +591,39 @@ export const App: React.FC = () => {
           )}
         </div>
 
+        {/* Info & Controls Area */}
         <div className="w-full">
           <motion.div className="max-w-[360px] w-full flex flex-col items-center mx-auto" drag="y" dragConstraints={{ top: 0, bottom: 0 }} onDragEnd={(_, info) => info.offset.y < -50 && setShowPlaylist(true)}>
             <div className="w-full flex flex-col items-center gap-6 py-4 px-6">
-
+              
               <div className="text-center w-full px-4 min-h-[60px] flex flex-col justify-center">
                 <AnimatePresence mode="wait">
                   <motion.div key={activeStation?.id || 'none'} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }}>
                     <h2 className="text-3xl font-black mb-1 truncate leading-tight dark:text-white">{activeStation?.name || 'Пусто'}</h2>
                     <p className="text-[10px] opacity-40 dark:opacity-60 uppercase tracking-[0.2em] font-black dark:text-white/80">
-                      {!activeStation ? 'Выберите источник' :
-                        (castState === 'connected' ? 'Трансляция активна' :
-                          playingStationId === activeStationId && status === 'playing' ? 'В эфире' :
-                            playingStationId === activeStationId && status === 'loading' ? 'Загрузка...' :
-                              'Пауза')}
+                        {!activeStation ? 'Выберите источник' : 
+                         (playingStationId === activeStationId && status === 'playing' ? 'В эфире' : 
+                          playingStationId === activeStationId && status === 'loading' ? 'Загрузка...' : 
+                          'Пауза')}
                     </p>
                   </motion.div>
                 </AnimatePresence>
               </div>
 
-              <div className="w-full max-w-[300px] flex items-center gap-3">
-                <RippleButton
-                  onClick={handleCast}
-                  className={`p-2 transition-colors ${castBtnClass}`}
-                  title={castState === 'connected' ? 'Трансляция активна' : 'Трансляция на ТВ'}
-                >
-                  <Icons.Cast />
-                </RippleButton>
-
-                <input 
-                  type="range" 
-                  min="0" 
-                  max="1" 
-                  step="0.01" 
-                  value={volume} 
-                  onChange={(e) => setVolume(parseFloat(e.target.value))} 
-                  className="flex-1 h-2 bg-gray-200 dark:bg-[#2c2c2c] rounded-full appearance-none accent-blue-600" 
-                  disabled={!canPlay} 
-                />
+              <div className="w-full max-w-[300px] flex flex-col gap-3">
+                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 dark:bg-[#2c2c2c] rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
               </div>
 
               <div className="w-full max-w-[360px] flex items-center justify-around mt-2">
                 <RippleButton onClick={() => navigateStation('prev')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 active:scale-90' : 'text-gray-300 dark:text-gray-700 opacity-20 pointer-events-none'}`}><Icons.Prev /></RippleButton>
                 <RippleButton onClick={() => canPlay && handleTogglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ${canPlay ? 'bg-blue-600 text-white shadow-blue-600/30 dark:shadow-blue-500/10' : 'bg-gray-200 dark:bg-[#2c2c2c] text-gray-400 dark:text-gray-600'}`} disabled={!canPlay}>
-                  {(playingStationId === activeStationId) && (status === 'playing' || status === 'loading') ? <Icons.Pause /> : <Icons.Play />}
+                    {(playingStationId === activeStationId) && (status === 'playing' || status === 'loading') ? <Icons.Pause /> : <Icons.Play />}
                 </RippleButton>
                 <RippleButton onClick={() => navigateStation('next')} className={`p-5 transition-all ${displayedStations.length > 1 ? 'text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 active:scale-90' : 'text-gray-300 dark:text-gray-700 opacity-20 pointer-events-none'}`}><Icons.Next /></RippleButton>
               </div>
 
             </div>
-
+            
             <div className="flex flex-col items-center gap-2 pt-2 text-gray-300 dark:text-gray-700 cursor-grab opacity-50 hover:opacity-100 transition-opacity w-full">
               <div className="w-10 h-1 rounded-full bg-current mx-auto" />
               <span className="text-[9px] uppercase font-bold tracking-widest text-center">Плейлист</span>
@@ -698,19 +649,19 @@ export const App: React.FC = () => {
                 {stationsInPlaylist.length > 0 ? (
                   <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-1">
                     {stationsInPlaylist.map(s => (
-                      <ReorderableStationItem
-                        key={s.id}
-                        station={s}
-                        isActive={activeStationId === s.id}
-                        isPlaying={playingStationId === s.id}
-                        isFavorite={favorites.includes(s.id)}
-                        status={status}
-                        hapticImpact={hapticImpact}
-                        onSelect={() => handleSelectStation(s)}
-                        onToggleFavorite={(e) => toggleFavorite(s.id, e)}
-                        onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }}
-                        onDelete={(e) => handleDelete(s.id, e)}
-                      />
+                        <ReorderableStationItem 
+                            key={s.id} 
+                            station={s} 
+                            isActive={activeStationId === s.id} 
+                            isPlaying={playingStationId === s.id}
+                            isFavorite={favorites.includes(s.id)} 
+                            status={status} 
+                            hapticImpact={hapticImpact} 
+                            onSelect={() => handleSelectStation(s)} 
+                            onToggleFavorite={(e) => toggleFavorite(s.id, e)} 
+                            onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }} 
+                            onDelete={(e) => handleDelete(s.id, e)} 
+                        />
                     ))}
                   </ReorderGroup>
                 ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-8"><h3 className="text-lg font-black text-gray-400 dark:text-gray-600">{playlistFilter === 'favorites' ? 'Нет избранных' : 'Плейлист пуст'}</h3></div>}
@@ -727,7 +678,7 @@ export const App: React.FC = () => {
           </>
         )}
       </AnimatePresence>
-
+      
       <AnimatePresence>
         {showAboutModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -735,8 +686,8 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.2.1</p>
-              <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, трансляция на ТВ и экспорт плейлистов.</div>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.0.1</p>
+              <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Понятно</RippleButton>
             </motion.div>
           </div>
