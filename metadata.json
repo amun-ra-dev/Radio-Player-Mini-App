@@ -1,7 +1,7 @@
 {
   "name": "Radio Player Mini App",
   "description": "Telegram Mini App для прослушивания интернет-радио в стиле Flat Material с нативным управлением, поддержкой HLS и системой избранного",
-  "version": "1.9.65",
+  "version": "1.9.80",
   "requestFramePermissions": [
     "microphone"
   ]

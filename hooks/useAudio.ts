@@ -2,12 +2,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { PlayerStatus } from '../types.ts';
 
-declare const Hls: any;
-
 export const useAudio = (streamUrl: string | null) => {
   const [status, setStatus] = useState<PlayerStatus>('idle');
   const [volume, setVolume] = useState(0.5);
   const [castAvailable, setCastAvailable] = useState(false);
+  const [castState, setCastState] = useState<'disconnected' | 'connecting' | 'connected'>('disconnected');
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hlsRef = useRef<any>(null);
@@ -27,8 +26,8 @@ export const useAudio = (streamUrl: string | null) => {
       retryCountRef.current++;
       const delay = retryCountRef.current === 1 ? 1500 : retryCountRef.current === 2 ? 4000 : 8000;
       setTimeout(() => {
-        if (shouldBePlayingRef.current) {
-          playAudioRef.current?.();
+        if (shouldBePlayingRef.current && playAudioRef.current) {
+          playAudioRef.current();
         }
       }, delay);
     } else {
@@ -64,14 +63,12 @@ export const useAudio = (streamUrl: string | null) => {
     const audio = audioRef.current;
     audio.volume = volume;
 
-    const useHls = (url: string) => {
-        const lowerUrl = url.toLowerCase();
-        return lowerUrl.includes('.m3u8');
-    };
+    const isM3u8 = urlToPlay.toLowerCase().includes('.m3u8');
+    const GlobalHls = (window as any).Hls;
 
     try {
-      if (useHls(urlToPlay) && typeof Hls !== 'undefined' && Hls.isSupported()) {
-        const hls = new Hls({
+      if (isM3u8 && typeof GlobalHls !== 'undefined' && GlobalHls.isSupported()) {
+        const hls = new GlobalHls({
           enableWorker: true,
           lowLatencyMode: true,
           backBufferLength: 60,
@@ -81,7 +78,7 @@ export const useAudio = (streamUrl: string | null) => {
         hls.loadSource(urlToPlay);
         hls.attachMedia(audio);
         
-        hls.on(Hls.Events.MANIFEST_PARSED, async () => {
+        hls.on(GlobalHls.Events.MANIFEST_PARSED, async () => {
           if (currentVersion !== requestVersionRef.current) return;
           try { await audio.play(); } catch (e: any) {
             if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
@@ -90,12 +87,12 @@ export const useAudio = (streamUrl: string | null) => {
           }
         });
 
-        hls.on(Hls.Events.ERROR, (_: any, data: any) => {
+        hls.on(GlobalHls.Events.ERROR, (_: any, data: any) => {
           if (currentVersion !== requestVersionRef.current) return;
           if (data.fatal) {
             switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
-              case Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
+              case GlobalHls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+              case GlobalHls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
               default: handleAudioError(); break;
             }
           }
@@ -149,19 +146,25 @@ export const useAudio = (streamUrl: string | null) => {
       audio.onwaiting = () => { if (shouldBePlayingRef.current) setStatus('loading'); };
       audio.onerror = handleAudioError;
       
-      // Настройка отслеживания устройств
       const remote = (audio as any).remote;
-      if (remote && remote.watchAvailability) {
-        remote.watchAvailability((available: boolean) => {
-          setCastAvailable(available);
-        }).then((id: number) => {
-          availabilityCallbackIdRef.current = id;
-        }).catch(() => {
-          // Если watchAvailability не поддерживается, считаем что трансляция возможна всегда (кнопка будет активна)
+      if (remote) {
+        if (remote.state) setCastState(remote.state);
+        
+        remote.onstatechange = () => {
+          if (remote.state) setCastState(remote.state);
+        };
+
+        if (remote.watchAvailability) {
+          remote.watchAvailability((available: boolean) => {
+            setCastAvailable(available);
+          }).then((id: number) => {
+            availabilityCallbackIdRef.current = id;
+          }).catch(() => {
+            setCastAvailable(true);
+          });
+        } else {
           setCastAvailable(true);
-        });
-      } else if (remote) {
-          setCastAvailable(true);
+        }
       }
 
       audioRef.current = audio;
@@ -175,18 +178,6 @@ export const useAudio = (streamUrl: string | null) => {
       stopAndCleanup();
     };
   }, [handleAudioError, stopAndCleanup]);
-
-  const lastEffectUrlRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (streamUrl && streamUrl !== lastEffectUrlRef.current) {
-      lastEffectUrlRef.current = streamUrl;
-      if (shouldBePlayingRef.current) {
-        playAudioRef.current?.(streamUrl);
-      }
-    } else if (!streamUrl) {
-      lastEffectUrlRef.current = null;
-    }
-  }, [streamUrl]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -215,13 +206,15 @@ export const useAudio = (streamUrl: string | null) => {
         if (!audio.src && streamUrl) {
           audio.src = streamUrl;
         }
-        await (audio as any).remote.prompt();
+        return (audio as any).remote.prompt();
       } catch (e: any) {
-        const isDismissed = e.name === 'NotAllowedError' || (e.message && e.message.toLowerCase().includes('dismissed'));
+        const isDismissed = e.name === 'NotAllowedError' || 
+                           e.name === 'AbortError' ||
+                           (e.message && e.message.toLowerCase().includes('dismissed'));
         if (!isDismissed) {
           console.error("Remote playback prompt failed", e);
+          throw e;
         }
-        throw e;
       }
     } else {
       throw new Error("Remote playback not supported");
@@ -230,9 +223,8 @@ export const useAudio = (streamUrl: string | null) => {
 
   const isCastSupported = useCallback(() => {
     const audio = audioRef.current;
-    // Возвращаем true если API доступно и есть найденные устройства (или поддержка watchAvailability отсутствует)
-    return !!(audio && (audio as any).remote && castAvailable);
-  }, [castAvailable]);
+    return !!(audio && (audio as any).remote);
+  }, []);
 
   return {
     status,
@@ -242,6 +234,8 @@ export const useAudio = (streamUrl: string | null) => {
     play: playAudio,
     stop,
     promptCast,
-    isCastSupported
+    isCastSupported,
+    castAvailable,
+    castState
   };
 };
