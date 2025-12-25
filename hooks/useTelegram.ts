@@ -1,116 +1,84 @@
 
-import { useEffect, useMemo, useState } from 'react';
-
-type ImpactStyle = 'light' | 'medium' | 'heavy' | 'rigid' | 'soft';
-type NotifyType = 'error' | 'success' | 'warning';
+import { useEffect, useState, useCallback } from 'react';
 
 export const useTelegram = () => {
   const tg = (window as any).Telegram?.WebApp;
 
-  const [isExpanded, setIsExpanded] = useState<boolean>(tg?.isExpanded || false);
+  const [colorScheme, setColorScheme] = useState(tg?.colorScheme || 'light');
 
-  const platform = useMemo(() => (tg?.platform?.toLowerCase?.() || ''), [tg]);
-  const isMobile = platform === 'ios' || platform === 'android';
+  const setCssVar = useCallback((name: string, value: string) => {
+    document.documentElement.style.setProperty(name, value);
+  }, []);
 
   useEffect(() => {
     if (!tg) return;
 
     tg.ready();
-
-    const setCssVar = (name: string, value: string) => {
-      document.documentElement.style.setProperty(name, value);
-    };
-
-    const applyInsets = () => {
-      const safe = tg.safeAreaInset || tg.contentSafeAreaInset || null;
-
-      if (safe) {
-        setCssVar('--tg-safe-top', `${safe.top || 0}px`);
-        setCssVar('--tg-safe-bottom', `${safe.bottom || 0}px`);
-        setCssVar('--tg-safe-left', `${safe.left || 0}px`);
-        setCssVar('--tg-safe-right', `${safe.right || 0}px`);
-      } else {
-        setCssVar('--tg-safe-top', `env(safe-area-inset-top, 0px)`);
-        setCssVar('--tg-safe-bottom', `env(safe-area-inset-bottom, 0px)`);
-        setCssVar('--tg-safe-left', `env(safe-area-inset-left, 0px)`);
-        setCssVar('--tg-safe-right', `env(safe-area-inset-right, 0px)`);
+    
+    // API 8.0+: Fullscreen & Orientation
+    if (tg.isVersionAtLeast('8.0')) {
+      try {
+        if (tg.requestFullscreen) tg.requestFullscreen();
+        if (tg.lockOrientation) tg.lockOrientation();
+      } catch (e) {
+        console.warn("Telegram Layout API error:", e);
       }
-    };
+    }
 
-    const applyViewport = () => {
-      if (tg.viewportHeight) {
-        setCssVar('--tg-viewport-height', `${tg.viewportHeight}px`);
-      }
-      if (tg.viewportStableHeight) {
-        setCssVar('--tg-viewport-stable-height', `${tg.viewportStableHeight}px`);
-      }
-    };
-
-    const applyTheme = () => {
-      if (!tg.themeParams) return;
-
-      document.body.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
-      document.body.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#222222');
-
-      // Синхронизация Tailwind dark mode с темой Telegram
+    const handleThemeChange = () => {
+      setColorScheme(tg.colorScheme);
       if (tg.colorScheme === 'dark') {
         document.documentElement.classList.add('dark');
       } else {
         document.documentElement.classList.remove('dark');
       }
-
+      
       try {
-        if (typeof tg.setHeaderColor === 'function') tg.setHeaderColor(tg.themeParams.bg_color || 'bg_color');
-      } catch {}
-      try {
-        if (typeof tg.setBackgroundColor === 'function') tg.setBackgroundColor(tg.themeParams.bg_color || 'bg_color');
-      } catch {}
+        if (tg.setHeaderColor) tg.setHeaderColor(tg.themeParams.bg_color);
+        if (tg.setBackgroundColor) tg.setBackgroundColor(tg.themeParams.bg_color);
+        // API 7.10+: Bottom Bar Color
+        if (tg.isVersionAtLeast('7.10') && tg.setBottomBarColor) {
+          tg.setBottomBarColor(tg.themeParams.secondary_bg_color);
+        }
+      } catch (e) {
+        console.warn("Theme sync error:", e);
+      }
     };
 
-    const requestFullscreenSafe = () => {
-      try {
-        if (typeof tg.requestFullscreen === 'function') tg.requestFullscreen();
-      } catch {}
+    const handleViewportChange = () => {
+      // Safe Area API (7.7+)
+      const safe = (tg.isVersionAtLeast('7.7') && tg.safeAreaInset) || { top: 0, bottom: 0 };
+      setCssVar('--tg-safe-top', `${safe.top}px`);
+      setCssVar('--tg-safe-bottom', `${safe.bottom}px`);
+      setCssVar('--tg-viewport-height', `${tg.viewportHeight}px`);
     };
 
-    const updateUIState = () => {
-      setIsExpanded(Boolean(tg.isExpanded));
-      applyInsets();
-      applyViewport();
-      applyTheme(); // Обновляем тему при изменении параметров
-    };
+    tg.onEvent('themeChanged', handleThemeChange);
+    tg.onEvent('viewportChanged', handleViewportChange);
 
-    if (isMobile) {
-      try {
-        tg.expand();
-      } catch {}
-
-      requestFullscreenSafe();
-
-      const once = () => requestFullscreenSafe();
-      window.addEventListener('pointerdown', once, { once: true, passive: true });
-      window.addEventListener('touchstart', once, { once: true, passive: true });
-    }
-
-    updateUIState();
-    
-    tg.onEvent('viewportChanged', updateUIState);
-    tg.onEvent('themeChanged', applyTheme);
+    handleThemeChange();
+    handleViewportChange();
 
     return () => {
-      try {
-        tg.offEvent('viewportChanged', updateUIState);
-        tg.offEvent('themeChanged', applyTheme);
-      } catch {}
+      tg.offEvent('themeChanged', handleThemeChange);
+      tg.offEvent('viewportChanged', handleViewportChange);
     };
-  }, [tg, isMobile]);
+  }, [tg, setCssVar]);
 
-  const hapticImpact = (style: ImpactStyle = 'light') => {
-    tg?.HapticFeedback?.impactOccurred?.(style);
+  const hapticImpact = (style: 'light' | 'medium' | 'heavy' = 'light') => {
+    tg?.HapticFeedback?.impactOccurred(style);
   };
 
-  const hapticNotification = (type: NotifyType) => {
-    tg?.HapticFeedback?.notificationOccurred?.(type);
+  const showSecondaryButton = (text: string, onClick: () => void) => {
+    if (!tg || !tg.isVersionAtLeast('7.10') || !tg.SecondaryButton) return;
+    
+    tg.SecondaryButton.setText(text);
+    tg.SecondaryButton.show();
+    tg.SecondaryButton.onClick(onClick);
+    return () => {
+      tg.SecondaryButton.offClick(onClick); // FIXED: was offOnClick
+      tg.SecondaryButton.hide();
+    };
   };
 
   const setBackButton = (isVisible: boolean, onClick: () => void) => {
@@ -119,19 +87,17 @@ export const useTelegram = () => {
       tg.BackButton.show();
       tg.BackButton.onClick(onClick);
     } else {
+      tg.BackButton.offClick(onClick); // FIXED: was offOnClick
       tg.BackButton.hide();
     }
   };
 
   return {
     tg,
-    isExpanded,
     hapticImpact,
-    hapticNotification,
     setBackButton,
-    isDark: tg?.colorScheme === 'dark',
-    themeParams: tg?.themeParams,
-    platform: tg?.platform,
-    isMobile
+    showSecondaryButton,
+    isDark: colorScheme === 'dark',
+    platform: tg?.platform || 'unknown'
   };
 };

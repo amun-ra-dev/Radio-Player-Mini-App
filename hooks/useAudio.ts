@@ -2,8 +2,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { PlayerStatus } from '../types.ts';
 
-declare const Hls: any;
-
 export const useAudio = (streamUrl: string | null) => {
   const [status, setStatus] = useState<PlayerStatus>('idle');
   const [volume, setVolume] = useState(0.5);
@@ -43,10 +41,8 @@ export const useAudio = (streamUrl: string | null) => {
         return;
     }
 
-    // Принудительно ставим флаг, что мы ДОЛЖНЫ играть
     shouldBePlayingRef.current = true;
 
-    // СТРОГАЯ ПРОВЕРКА: Если этот URL уже играет или загружается, НЕ трогаем его
     if (urlToPlay === currentLoadedUrlRef.current && (status === 'playing' || status === 'loading')) {
       return;
     }
@@ -69,9 +65,11 @@ export const useAudio = (streamUrl: string | null) => {
         return lowerUrl.includes('.m3u8');
     };
 
+    const GlobalHls = (window as any).Hls;
+
     try {
-      if (useHls(urlToPlay) && typeof Hls !== 'undefined' && Hls.isSupported()) {
-        const hls = new Hls({
+      if (useHls(urlToPlay) && typeof GlobalHls !== 'undefined' && GlobalHls.isSupported()) {
+        const hls = new GlobalHls({
           enableWorker: true,
           lowLatencyMode: true,
           backBufferLength: 60,
@@ -81,7 +79,7 @@ export const useAudio = (streamUrl: string | null) => {
         hls.loadSource(urlToPlay);
         hls.attachMedia(audio);
         
-        hls.on(Hls.Events.MANIFEST_PARSED, async () => {
+        hls.on(GlobalHls.Events.MANIFEST_PARSED, async () => {
           if (currentVersion !== requestVersionRef.current) return;
           try { await audio.play(); } catch (e: any) {
             if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
@@ -90,12 +88,12 @@ export const useAudio = (streamUrl: string | null) => {
           }
         });
 
-        hls.on(Hls.Events.ERROR, (_: any, data: any) => {
+        hls.on(GlobalHls.Events.ERROR, (_: any, data: any) => {
           if (currentVersion !== requestVersionRef.current) return;
           if (data.fatal) {
             switch (data.type) {
-              case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
-              case Hls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
+              case GlobalHls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+              case GlobalHls.ErrorTypes.MEDIA_ERROR: hls.recoverMediaError(); break;
               default: handleAudioError(); break;
             }
           }
@@ -158,7 +156,6 @@ export const useAudio = (streamUrl: string | null) => {
   useEffect(() => {
     if (streamUrl && streamUrl !== lastEffectUrlRef.current) {
       lastEffectUrlRef.current = streamUrl;
-      // Если URL сменился и мы уже в режиме "играть", запускаем новый поток
       if (shouldBePlayingRef.current) {
         playAudioRef.current?.(streamUrl);
       }
