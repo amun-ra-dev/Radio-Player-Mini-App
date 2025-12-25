@@ -43,10 +43,8 @@ export const useAudio = (streamUrl: string | null) => {
         return;
     }
 
-    // Принудительно ставим флаг, что мы ДОЛЖНЫ играть
     shouldBePlayingRef.current = true;
 
-    // СТРОГАЯ ПРОВЕРКА: Если этот URL уже играет или загружается, НЕ трогаем его
     if (urlToPlay === currentLoadedUrlRef.current && (status === 'playing' || status === 'loading')) {
       return;
     }
@@ -143,6 +141,10 @@ export const useAudio = (streamUrl: string | null) => {
       audio.preload = "none";
       audio.crossOrigin = "anonymous";
       
+      // Настройка атрибутов для Remote Playback
+      (audio as any).xComponent = 'audio';
+      (audio as any).remotePlayback = true;
+      
       audio.onplaying = () => { setStatus('playing'); retryCountRef.current = 0; };
       audio.onpause = () => { setStatus(prev => (prev === 'loading' || shouldBePlayingRef.current) ? 'loading' : 'paused'); };
       audio.onwaiting = () => { if (shouldBePlayingRef.current) setStatus('loading'); };
@@ -158,7 +160,6 @@ export const useAudio = (streamUrl: string | null) => {
   useEffect(() => {
     if (streamUrl && streamUrl !== lastEffectUrlRef.current) {
       lastEffectUrlRef.current = streamUrl;
-      // Если URL сменился и мы уже в режиме "играть", запускаем новый поток
       if (shouldBePlayingRef.current) {
         playAudioRef.current?.(streamUrl);
       }
@@ -187,12 +188,31 @@ export const useAudio = (streamUrl: string | null) => {
     }
   }, [status, stop, playAudio]);
 
+  const promptCast = useCallback(async () => {
+    if (audioRef.current && (audioRef.current as any).remote) {
+      try {
+        await (audioRef.current as any).remote.prompt();
+      } catch (e) {
+        console.error("Remote playback prompt failed", e);
+        throw e;
+      }
+    } else {
+      throw new Error("Remote playback not supported");
+    }
+  }, []);
+
+  const isCastSupported = useCallback(() => {
+    return !!(audioRef.current && (audioRef.current as any).remote);
+  }, []);
+
   return {
     status,
     volume,
     setVolume,
     togglePlay,
     play: playAudio,
-    stop
+    stop,
+    promptCast,
+    isCastSupported
   };
 };

@@ -1,7 +1,7 @@
 
-// Build: 2.0.1
+// Build: 2.1.0
+// - Feature: Cast to Remote Devices (Android TV, Chromecast, AirPlay).
 // - Fix: Initial volume set to 50% (0.5).
-// - Feature: Full Dark Mode support synced with Telegram theme.
 // - UX: Refined dark mode color palette for Material design feel.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -244,7 +244,7 @@ export const App: React.FC = () => {
     return stations.find(s => s.id === playingStationId) || null;
   }, [stations, playingStationId]);
 
-  const { status, volume, setVolume, togglePlay: baseTogglePlay, play, stop } = useAudio(playingStation?.streamUrl || null);
+  const { status, volume, setVolume, togglePlay: baseTogglePlay, play, stop, promptCast, isCastSupported } = useAudio(playingStation?.streamUrl || null);
 
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
@@ -257,6 +257,20 @@ export const App: React.FC = () => {
       play(activeStation.streamUrl);
     }
   }, [activeStationId, playingStationId, status, baseTogglePlay, activeStation, hapticImpact, play]);
+
+  const handleCast = async () => {
+    hapticImpact('light');
+    if (!isCastSupported()) {
+        setSnackbar('Трансляция не поддерживается вашим устройством');
+        hapticNotification('warning');
+        return;
+    }
+    try {
+        await promptCast();
+    } catch (e) {
+        // Ошибка или отмена пользователем
+    }
+  };
 
   useEffect(() => {
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
@@ -360,7 +374,7 @@ export const App: React.FC = () => {
             setActiveStationId(nextList[targetIdx].id);
         }
     }
-  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, activeStationId, favorites, stations, swiperInstance]);
+  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, favorites, stations, swiperInstance]);
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => {
     if (!swiperInstance) return;
@@ -503,7 +517,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col overflow-hidden text-[#222222] dark:text-white bg-[#f5f5f5] dark:bg-[#121212]" style={{ height: 'var(--tg-viewport-height, 100vh)' }}>
-      {/* Header (Head) */}
+      {/* Header */}
       <div className="flex items-center justify-between px-6 bg-white dark:bg-[#1f1f1f] shadow-md z-10 shrink-0 border-b border-gray-100 dark:border-gray-800" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)', paddingBottom: '12px' }}>
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setShowAboutModal(true)}>
           <Logo className="w-8 h-8 text-blue-600 dark:text-blue-400" />
@@ -523,7 +537,6 @@ export const App: React.FC = () => {
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-around py-4 overflow-hidden relative">
-        {/* Carousel (Карусель) */}
         <div className="relative w-[340px] aspect-square shrink-0">
           {hasStations ? (
             <Swiper
@@ -546,16 +559,8 @@ export const App: React.FC = () => {
               creativeEffect={{
                 limitProgress: 3,
                 perspective: true,
-                prev: {
-                  translate: ['-120%', 0, 0],
-                  rotate: [0, 0, -20],
-                  opacity: 0,
-                },
-                next: {
-                  translate: ['12px', 0, -100],
-                  scale: 0.9,
-                  opacity: 0.6,
-                },
+                prev: { translate: ['-120%', 0, 0], rotate: [0, 0, -20], opacity: 0 },
+                next: { translate: ['12px', 0, -100], scale: 0.9, opacity: 0.6 }
               }}
               modules={[EffectCreative, Keyboard]}
               keyboard={{ enabled: true }}
@@ -591,7 +596,6 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        {/* Info & Controls Area */}
         <div className="w-full">
           <motion.div className="max-w-[360px] w-full flex flex-col items-center mx-auto" drag="y" dragConstraints={{ top: 0, bottom: 0 }} onDragEnd={(_, info) => info.offset.y < -50 && setShowPlaylist(true)}>
             <div className="w-full flex flex-col items-center gap-6 py-4 px-6">
@@ -610,8 +614,11 @@ export const App: React.FC = () => {
                 </AnimatePresence>
               </div>
 
-              <div className="w-full max-w-[300px] flex flex-col gap-3">
-                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-2 bg-gray-200 dark:bg-[#2c2c2c] rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
+              <div className="w-full max-w-[300px] flex items-center gap-3">
+                <RippleButton onClick={handleCast} className={`p-2 transition-colors ${canPlay && isCastSupported() ? 'text-gray-400 dark:text-gray-500 hover:text-blue-500' : 'text-gray-200 dark:text-gray-800 pointer-events-none'}`} title="Трансляция на ТВ">
+                    <Icons.Cast />
+                </RippleButton>
+                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="flex-1 h-2 bg-gray-200 dark:bg-[#2c2c2c] rounded-full appearance-none accent-blue-600" disabled={!canPlay} />
               </div>
 
               <div className="w-full max-w-[360px] flex items-center justify-around mt-2">
@@ -686,8 +693,8 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center">
               <div className="w-16 h-16 bg-blue-600 text-white rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.0.1</p>
-              <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.1.0</p>
+              <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, трансляция на ТВ и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black shadow-lg shadow-blue-600/20">Понятно</RippleButton>
             </motion.div>
           </div>
