@@ -1,7 +1,7 @@
 
-/* 60 FPS Performance Optimizations */
+/* Base styles to fix build error */
 :root {
-  --swiper-theme-color: var(--tg-theme-button-color, #2481cc);
+  --swiper-theme-color: var(--tg-theme-button-color, #2563eb);
 }
 
 body {
@@ -9,35 +9,6 @@ body {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
-
-/* GPU Acceleration Classes */
-.transform-gpu {
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  perspective: 1000px;
-}
-
-.will-change-transform {
-  will-change: transform;
-}
-
-.backface-hidden {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-}
-
-/* Swiper Smoothness Fixes */
-.swiper-wrapper {
-  will-change: transform;
-  transform-style: preserve-3d;
-}
-
-.swiper-slide {
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
-  transform-style: preserve-3d;
 }
 
 /* Системные цвета для инпутов Telegram */
