@@ -10,6 +10,10 @@
   --tw-shadow-colored: 0 0 #0000;
 }
 
+* {
+  transition: background-color 0.4s ease-out, border-color 0.4s ease-out, color 0.4s ease-out;
+}
+
 body {
   margin: 0;
   padding: 0;
