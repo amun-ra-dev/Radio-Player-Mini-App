@@ -8,6 +8,7 @@ export const useTelegram = () => {
   const tg = (window as any).Telegram?.WebApp;
 
   const [isExpanded, setIsExpanded] = useState<boolean>(tg?.isExpanded || false);
+  const [themeParams, setThemeParams] = useState(tg?.themeParams || {});
 
   const platform = useMemo(() => (tg?.platform?.toLowerCase?.() || ''), [tg]);
   const isMobile = platform === 'ios' || platform === 'android';
@@ -49,10 +50,13 @@ export const useTelegram = () => {
     const applyTheme = () => {
       if (!tg.themeParams) return;
 
+      // Update state to trigger re-renders
+      setThemeParams({ ...tg.themeParams });
+
       document.body.style.setProperty('--tg-theme-bg-color', tg.themeParams.bg_color || '#ffffff');
       document.body.style.setProperty('--tg-theme-text-color', tg.themeParams.text_color || '#222222');
 
-      // Синхронизация Tailwind dark mode с темой Telegram
+      // Sync Tailwind dark mode with Telegram color scheme
       if (tg.colorScheme === 'dark') {
         document.documentElement.classList.add('dark');
       } else {
@@ -69,7 +73,6 @@ export const useTelegram = () => {
 
     const lockPortraitOrientation = () => {
       try {
-        // Блокировка ориентации (доступно в Bot API 8.0+)
         if (typeof tg.lockOrientation === 'function') {
           tg.lockOrientation('portrait');
         }
@@ -145,7 +148,7 @@ export const useTelegram = () => {
     hapticNotification,
     setBackButton,
     isDark: tg?.colorScheme === 'dark',
-    themeParams: tg?.themeParams,
+    themeParams,
     platform: tg?.platform,
     isMobile
   };
