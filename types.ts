@@ -15,3 +15,17 @@ export interface AppSettings {
   quality: 'auto' | 'low' | 'high';
   hapticEnabled: boolean;
 }
+
+export type ExportSchemaV2 = {
+  schemaVersion: 2;
+  appVersion: string;
+  exportedAt: number;
+  stations: Array<{
+    id: string;
+    title: string;
+    streamUrl: string;
+    coverUrl?: string;
+    isFavorite: boolean;
+    tags?: string[];
+  }>;
+};

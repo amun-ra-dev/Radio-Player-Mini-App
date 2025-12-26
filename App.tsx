@@ -1,8 +1,8 @@
 
-// Build: 2.2.5
-// - UI: Separated blocks (Разделенные блоки карусели и управления).
-// - Design: Preserved Glassmorphism with distinct shadows.
-// - Layout: Balanced spacing using justify-evenly.
+// Build: 2.2.9
+// - Feature: Import/Export Schema v2 (Новая система импорта/экспорта).
+// - Logic: Deduplication by streamUrl & merge strategy.
+// - UI: Restored utility buttons in Playlist with updated grid.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -10,7 +10,7 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCreative, Keyboard } from 'swiper/modules';
 import type { Swiper as SwiperClass } from 'swiper';
 
-import { Station, PlayerStatus } from './types.ts';
+import { Station, PlayerStatus, ExportSchemaV2 } from './types.ts';
 import { DEFAULT_STATIONS, Icons } from './constants.tsx';
 import { useTelegram } from './hooks/useTelegram.ts';
 import { useAudio } from './hooks/useAudio.ts';
@@ -20,6 +20,8 @@ import { Logo } from './components/UI/Logo.tsx';
 
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
+
+const APP_VERSION = "2.2.9";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -183,8 +185,6 @@ export const App: React.FC = () => {
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [playlistFilter, setPlaylistFilter] = useState<'all' | 'favorites'>('all');
   const [showEditor, setShowEditor] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [showExportModal, setShowExportModal] = useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmData, setConfirmData] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -221,7 +221,7 @@ export const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('radio_only_favorites', String(onlyFavoritesMode)); }, [onlyFavoritesMode]);
   useEffect(() => { localStorage.setItem('radio_last_active', activeStationId); }, [activeStationId]);
   useEffect(() => { localStorage.setItem('radio_last_playing', playingStationId); }, [playingStationId]);
-  useEffect(() => { if (!snackbar) return; const timer = setTimeout(() => setSnackbar(null), 3000); return () => clearTimeout(timer); }, [snackbar]);
+  useEffect(() => { if (!snackbar) return; const timer = setTimeout(() => setSnackbar(null), 3500); return () => clearTimeout(timer); }, [snackbar]);
 
   const hasStations = stations.length > 0;
   const hasFavorites = favorites.length > 0;
@@ -381,14 +381,14 @@ export const App: React.FC = () => {
   }, [activeStationId, handleTogglePlay, hapticImpact, play]);
 
   const closeAllModals = useCallback(() => {
-    setShowEditor(false); setShowPlaylist(false); setShowImportModal(false); setShowConfirmModal(false);
-    setShowExportModal(false); setShowSleepTimerModal(false); setShowAboutModal(false); setEditingStation(null);
+    setShowEditor(false); setShowPlaylist(false); setShowConfirmModal(false);
+    setShowSleepTimerModal(false); setShowAboutModal(false); setEditingStation(null);
   }, []);
 
   useEffect(() => {
-    const isModalOpen = showEditor || showPlaylist || showImportModal || showConfirmModal || showExportModal || showSleepTimerModal || showAboutModal;
+    const isModalOpen = showEditor || showPlaylist || showConfirmModal || showSleepTimerModal || showAboutModal;
     setBackButton(isModalOpen, closeAllModals);
-  }, [showEditor, showPlaylist, showImportModal, showConfirmModal, showExportModal, showSleepTimerModal, showAboutModal, setBackButton, closeAllModals]);
+  }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, setBackButton, closeAllModals]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -421,45 +421,164 @@ export const App: React.FC = () => {
     setShowConfirmModal(true);
   };
 
-  const handleExport = (type: 'all' | 'favorites') => {
-    const list = type === 'all' ? stations : stations.filter(s => favorites.includes(s.id));
-    if (type === 'favorites' && list.length === 0) { hapticNotification('warning'); setSnackbar('Нет избранного для экспорта'); return; }
-    const json = list.map(s => ({ id: s.id, name: s.name, url: s.streamUrl, coverUrl: s.coverUrl, tags: s.tags }));
-    const text = `🤖 @mdsradibot Station List:\n\n\`\`\`json\n${JSON.stringify(json, null, 2)}\n\`\`\``;
-    navigator.clipboard.writeText(text).then(() => { hapticNotification('success'); setSnackbar(`Список скопирован!`); }).catch(() => { hapticNotification('error'); setSnackbar('Ошибка копирования'); });
-    setShowExportModal(false);
+  // --- Export Logic ---
+  const handleExport = () => {
+    const exportData: ExportSchemaV2 = {
+      schemaVersion: 2,
+      appVersion: APP_VERSION,
+      exportedAt: Date.now(),
+      stations: stations.map(s => ({
+        id: s.id,
+        title: s.name,
+        streamUrl: s.streamUrl,
+        coverUrl: s.coverUrl,
+        isFavorite: favorites.includes(s.id),
+        tags: s.tags
+      }))
+    };
+    
+    const text = JSON.stringify(exportData, null, 2);
+    navigator.clipboard.writeText(text)
+      .then(() => { 
+        hapticNotification('success'); 
+        setSnackbar(`Экспорт v2 завершен! Скопировано ${stations.length} станций.`); 
+      })
+      .catch(() => { 
+        hapticNotification('error'); 
+        setSnackbar('Ошибка экспорта'); 
+      });
   };
 
+  // --- Import Logic ---
   const processImportText = (text: string) => {
     try {
       let jsonStr = text.trim();
-      const start = text.indexOf('['); const end = text.lastIndexOf(']');
-      if (start !== -1 && end !== -1) jsonStr = text.substring(start, end + 1);
+      const start = text.indexOf('{');
+      const end = text.lastIndexOf('}');
+      const startArr = text.indexOf('[');
+      const endArr = text.lastIndexOf(']');
+
+      // Пытаемся вычленить JSON из текста (например, если он в блоке markdown)
+      if (start !== -1 && end !== -1 && (startArr === -1 || start < startArr)) {
+        jsonStr = text.substring(start, end + 1);
+      } else if (startArr !== -1 && endArr !== -1) {
+        jsonStr = text.substring(startArr, endArr + 1);
+      }
+
       const parsed = JSON.parse(jsonStr);
-      const list = Array.isArray(parsed) ? parsed : [parsed];
-      const normalized = list.filter((s: any) => s.name && (s.url || s.streamUrl)).map((s: any) => ({
-        id: s.id || Math.random().toString(36).substr(2, 9),
-        name: s.name, streamUrl: s.url || s.streamUrl, coverUrl: s.coverUrl || '', tags: s.tags || [], addedAt: Date.now()
-      }));
-      if (normalized.length === 0) { setSnackbar('Нет станций'); return; }
+      let importedStations: any[] = [];
+      let isV2 = false;
+
+      if (parsed.schemaVersion === 2 && Array.isArray(parsed.stations)) {
+        importedStations = parsed.stations;
+        isV2 = true;
+      } else if (Array.isArray(parsed)) {
+        importedStations = parsed;
+      } else if (typeof parsed === 'object') {
+        importedStations = [parsed];
+      }
+
+      const urlPattern = /^https?:\/\/.+/i;
+      const valid = importedStations.filter(s => 
+        (s.title || s.name) && 
+        (s.streamUrl || s.url) && 
+        urlPattern.test(s.streamUrl || s.url)
+      );
+
+      if (valid.length === 0) {
+        setSnackbar('Некорректный формат или нет валидных URL');
+        hapticNotification('error');
+        return;
+      }
+
+      let added = 0;
+      let updated = 0;
+      let skipped = 0;
+
       setStations(prev => {
-        const existingUrls = new Set(prev.map(s => s.streamUrl));
-        const unique = normalized.filter(s => !existingUrls.has(s.streamUrl));
-        if (unique.length === 0) { setSnackbar('Станции уже есть'); return prev; }
-        hapticNotification('success'); setSnackbar(`Добавлено: ${unique.length}`);
-        return [...prev, ...unique];
+        const next = [...prev];
+        const nextFavs = [...favorites];
+
+        valid.forEach(imp => {
+          const impUrl = imp.streamUrl || imp.url;
+          const impTitle = imp.title || imp.name;
+          const impCover = imp.coverUrl || imp.cover || '';
+          const impTags = Array.isArray(imp.tags) ? imp.tags : [];
+          const impFav = imp.isFavorite === true;
+
+          const existingIdx = next.findIndex(s => s.streamUrl === impUrl);
+
+          if (existingIdx !== -1) {
+            // Слияние (Merge strategy)
+            next[existingIdx] = {
+              ...next[existingIdx],
+              name: impTitle,
+              coverUrl: impCover || next[existingIdx].coverUrl,
+              tags: impTags.length > 0 ? impTags : next[existingIdx].tags
+            };
+            
+            if (impFav && !nextFavs.includes(next[existingIdx].id)) {
+              nextFavs.push(next[existingIdx].id);
+            }
+            updated++;
+          } else {
+            // Добавление новой
+            const newId = imp.id || Math.random().toString(36).substr(2, 9);
+            next.push({
+              id: newId,
+              name: impTitle,
+              streamUrl: impUrl,
+              coverUrl: impCover || `https://picsum.photos/400/400?random=${Math.random()}`,
+              tags: impTags,
+              addedAt: Date.now()
+            });
+            if (impFav) nextFavs.push(newId);
+            added++;
+          }
+        });
+
+        setFavorites(nextFavs);
+        return next;
       });
-      setShowImportModal(false);
-      setShowAboutModal(false);
-    } catch (e) { hapticNotification('error'); setSnackbar('Ошибка формата'); }
+
+      hapticNotification('success');
+      setSnackbar(`Импорт: +${added}, ~${updated}, !${skipped}`);
+      setShowPlaylist(false);
+
+    } catch (e) {
+      hapticNotification('error');
+      setSnackbar('Ошибка парсинга JSON. Проверьте буфер.');
+    }
   };
 
   const handleImport = async () => {
-    try { const text = await navigator.clipboard.readText(); if (text && (text.includes('[') || text.includes('{'))) processImportText(text); else { setShowImportModal(true); setShowAboutModal(false); } } catch (e) { setShowImportModal(true); setShowAboutModal(false); }
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && (text.includes('{') || text.includes('['))) {
+        processImportText(text);
+      } else {
+        setSnackbar('Буфер обмена не содержит JSON');
+        hapticNotification('warning');
+      }
+    } catch (e) {
+      setSnackbar('Нет доступа к буферу обмена');
+    }
   };
 
   const handleReset = () => {
-    setConfirmData({ message: 'Очистить весь плейлист?', onConfirm: () => { setStations([]); setFavorites([]); setOnlyFavoritesMode(false); setActiveStationId(''); setPlayingStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Плейлист очищен'); setShowAboutModal(false); } });
+    setConfirmData({ 
+      message: 'Очистить весь плейлист?', 
+      onConfirm: () => { 
+        setStations([]); 
+        setFavorites([]); 
+        setOnlyFavoritesMode(false); 
+        setActiveStationId(''); 
+        setPlayingStationId(''); 
+        stop(); 
+        hapticImpact('heavy'); 
+        setSnackbar('Плейлист очищен'); 
+      } 
+    });
     setShowConfirmModal(true);
   };
 
@@ -473,8 +592,8 @@ export const App: React.FC = () => {
           if (!activeStationId && unique.length > 0) setActiveStationId(unique[0].id);
           return [...prev, ...unique];
         });
-        setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); hapticNotification('success');
-        setShowAboutModal(false);
+        setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); 
+        hapticNotification('success');
       }
     });
     setShowConfirmModal(true);
@@ -488,7 +607,9 @@ export const App: React.FC = () => {
     const coverUrl = formData.get('coverUrl') as string;
     const tagsStr = formData.get('tags') as string;
     const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+    
     if (!name || !url) return;
+    
     if (editingStation) { 
         setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s)); 
         setEditingStation(null); setSnackbar('Обновлено'); 
@@ -501,7 +622,13 @@ export const App: React.FC = () => {
     setShowEditor(false); hapticImpact('light');
   };
 
-  useEffect(() => { if (showEditor) { setEditorPreviewUrl(editingStation?.coverUrl || ''); setEditorName(editingStation?.name || ''); setEditorTags(editingStation?.tags?.join(', ') || ''); } }, [showEditor, editingStation]);
+  useEffect(() => { 
+    if (showEditor) { 
+      setEditorPreviewUrl(editingStation?.coverUrl || ''); 
+      setEditorName(editingStation?.name || ''); 
+      setEditorTags(editingStation?.tags?.join(', ') || ''); 
+    } 
+  }, [showEditor, editingStation]);
 
   const canPlay = Boolean(activeStation?.streamUrl);
 
@@ -668,7 +795,7 @@ export const App: React.FC = () => {
                   
                   <div className="grid grid-cols-4 gap-2">
                     <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-gray-500 dark:text-gray-400"><Icons.Import /> <span className="mt-1">Импорт</span></RippleButton>
-                    <RippleButton onClick={() => setShowExportModal(true)} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-gray-500 dark:text-gray-400"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
+                    <RippleButton onClick={handleExport} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-gray-500 dark:text-gray-400"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
                     <RippleButton onClick={handleDemo} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-blue-500/70 dark:text-blue-400/50"><Icons.Help /> <span className="mt-1">Демо</span></RippleButton>
                     <RippleButton onClick={handleReset} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-red-400/70 dark:text-red-900/50"><Icons.Reset /> <span className="mt-1">Сброс</span></RippleButton>
                   </div>
@@ -688,19 +815,10 @@ export const App: React.FC = () => {
               <div className="flex flex-col items-center mb-8">
                 <div className="w-20 h-20 bg-blue-600 text-white rounded-[2rem] flex items-center justify-center mb-6 shadow-2xl shadow-blue-500/30"><Logo className="w-12 h-12" /></div>
                 <h3 className="text-3xl font-black dark:text-white tracking-tighter">Radio Player</h3>
-                <p className="text-[11px] font-black opacity-30 dark:opacity-40 uppercase tracking-[0.4em] dark:text-white mt-1">Build 2.2.5</p>
+                <p className="text-[11px] font-black opacity-30 dark:opacity-40 uppercase tracking-[0.4em] dark:text-white mt-1">Build {APP_VERSION}</p>
               </div>
 
-              <div className="bg-white/60 dark:bg-white/5 rounded-[2.5rem] p-6 flex flex-col gap-4 mb-8">
-                <div className="grid grid-cols-2 gap-3">
-                  <RippleButton onClick={handleImport} className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-white/5 rounded-2xl text-[11px] font-black text-blue-600 dark:text-blue-400"><Icons.Import className="w-4 h-4" /> Импорт</RippleButton>
-                  <RippleButton onClick={() => setShowExportModal(true)} className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-white/5 rounded-2xl text-[11px] font-black text-blue-600 dark:text-blue-400"><Icons.Export className="w-4 h-4" /> Экспорт</RippleButton>
-                  <RippleButton onClick={handleDemo} className="flex items-center gap-2 p-4 bg-blue-50 dark:bg-white/5 rounded-2xl text-[11px] font-black text-blue-600 dark:text-blue-400"><Icons.Help className="w-4 h-4" /> Демо</RippleButton>
-                  <RippleButton onClick={handleReset} className="flex items-center gap-2 p-4 bg-red-500/10 dark:bg-red-900/20 rounded-2xl text-[11px] font-black text-red-500/80"><Icons.Reset className="w-4 h-4" /> Сброс</RippleButton>
-                </div>
-              </div>
-
-              <div className="text-[13px] font-bold text-gray-400 dark:text-gray-500 text-center mb-8 px-6 leading-relaxed">Премиальный плеер с разделенными функциональными зонами.</div>
+              <div className="text-[13px] font-bold text-gray-400 dark:text-gray-500 text-center mb-8 px-6 leading-relaxed">Премиальный плеер с разделенными функциональными зонами и поддержкой импорта v2.</div>
               
               <RippleButton onClick={closeAllModals} className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black shadow-2xl shadow-blue-600/20 transition-transform active:scale-95">Закрыть</RippleButton>
             </motion.div>
@@ -721,10 +839,11 @@ export const App: React.FC = () => {
                 </div>
               </div>
               <form onSubmit={addOrUpdateStation} className="flex flex-col gap-4">
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <input name="name" required value={editorName} onChange={(e) => setEditorName(e.target.value)} placeholder="Название радио" className="w-full bg-blue-50/50 dark:bg-white/5 text-gray-900 dark:text-white rounded-[1.25rem] px-6 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all" />
                   <input name="url" type="url" required defaultValue={editingStation?.streamUrl || ''} placeholder="URL потока" className="w-full bg-blue-50/50 dark:bg-white/5 text-gray-900 dark:text-white rounded-[1.25rem] px-6 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all" />
                   <input name="coverUrl" type="url" value={editorPreviewUrl} onChange={(e) => setEditorPreviewUrl(e.target.value)} placeholder="URL обложки" className="w-full bg-blue-50/50 dark:bg-white/5 text-gray-900 dark:text-white rounded-[1.25rem] px-6 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all" />
+                  <input name="tags" value={editorTags} onChange={(e) => setEditorTags(e.target.value)} placeholder="Теги (через запятую)" className="w-full bg-blue-50/50 dark:bg-white/5 text-gray-900 dark:text-white rounded-[1.25rem] px-6 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-blue-500/50 transition-all" />
                 </div>
                 <div className="flex gap-4 mt-6">
                   <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-2xl font-black transition-all active:scale-95">Отмена</RippleButton>
@@ -739,8 +858,8 @@ export const App: React.FC = () => {
       <AnimatePresence>
         {snackbar && (
           <motion.div initial={{ opacity: 0, y: 60, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 60, scale: 0.9 }} className="fixed bottom-12 left-8 right-8 z-50 bg-gray-900/90 dark:bg-blue-900/95 backdrop-blur-2xl text-white px-8 py-5 rounded-[2.5rem] font-bold flex items-center justify-between shadow-2xl border border-white/10">
-            <span className="truncate pr-4 tracking-tight">{snackbar}</span>
-            <button onClick={() => setSnackbar(null)} className="shrink-0 text-blue-400 dark:text-blue-300 font-black uppercase text-xs tracking-widest">OK</button>
+            <span className="truncate pr-4 tracking-tight text-sm">{snackbar}</span>
+            <button onClick={() => setSnackbar(null)} className="shrink-0 text-blue-400 dark:text-blue-300 font-black uppercase text-xs tracking-widest ml-4">OK</button>
           </motion.div>
         )}
       </AnimatePresence>
