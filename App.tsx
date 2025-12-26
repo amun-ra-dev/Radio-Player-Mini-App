@@ -1,8 +1,8 @@
 
-// Build: 2.5.0
-// - Feature: Smart Favorites Mode (Auto-switching, state retention).
-// - UI: Enhanced Favorites indicator and empty state CTA.
-// - UX: Robust handling of un-favoriting active stations in filter mode.
+// Build: 2.5.1
+// - Fix: Prevented stream restart when toggling "Favorites Only" mode off.
+// - UI: Real-time dynamic accent synchronization with Telegram.
+// - UX: Optimized Swiper slide change logic to avoid redundant audio reloads.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.0";
+const APP_VERSION = "2.5.1";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -367,11 +367,9 @@ export const App: React.FC = () => {
       const isFavNow = prev.includes(id);
       const nextFavs = isFavNow ? prev.filter(fid => fid !== id) : [...prev, id];
       
-      // Rule 5.1: If favoritesOnly mode is active and we un-favorited the ACTIVE station
       if (onlyFavoritesMode && isFavNow && id === activeStationId) {
         const favStations = stations.filter(s => nextFavs.includes(s.id));
         if (favStations.length > 0) {
-          // Find next fallback favorite
           const currentIndex = stations.findIndex(s => s.id === id);
           const nextFav = favStations.find(s => stations.findIndex(st => st.id === s.id) > currentIndex) || favStations[0];
           
@@ -384,14 +382,12 @@ export const App: React.FC = () => {
             }
           }, 0);
         } else {
-          // No more favorites left
           setTimeout(() => {
             setOnlyFavoritesMode(false);
             setSnackbar('Режим избранного отключен: список пуст');
           }, 0);
         }
       } else if (!isFavNow) {
-        // Just added to favorites
         setLastPlayedFavoriteId(id);
       }
       
@@ -412,13 +408,11 @@ export const App: React.FC = () => {
     hapticImpact('medium');
     setSnackbar(nextMode ? 'Режим избранного: ВКЛ' : 'Режим избранного: ВЫКЛ');
 
-    // Rule 3A: Smart Continuation
     if (nextMode) {
       const currentIsFav = favorites.includes(activeStationId);
       if (!currentIsFav) {
         const favList = stations.filter(s => favorites.includes(s.id));
         if (favList.length > 0) {
-          // Fallback Strategy (Rule 4.1)
           const fallbackId = favorites.includes(lastPlayedFavoriteId) 
             ? lastPlayedFavoriteId 
             : favList[0].id;
@@ -755,7 +749,6 @@ export const App: React.FC = () => {
 
   const canPlay = Boolean(activeStation?.streamUrl);
 
-  // Dynamic Theme Colors with high reactivity
   const nativeAccentColor = themeParams?.button_color || '#2563eb';
   const nativeDestructiveColor = themeParams?.destructive_text_color || '#ef4444';
   const nativeBgColor = themeParams?.bg_color || '#ffffff';
@@ -763,10 +756,8 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col overflow-hidden transition-colors duration-500" style={{ height: 'var(--tg-viewport-height, 100vh)', color: nativeTextColor, backgroundColor: nativeBgColor }}>
-      {/* Dynamic Background Gradients */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20 dark:opacity-40 bg-[radial-gradient(circle_at_center,_#3b82f6_0%,_transparent_70%)] dark:bg-[radial-gradient(circle_at_center,_#1d4ed8_0%,_transparent_80%)]" />
       
-      {/* Header */}
       <div className="flex items-center justify-between px-6 bg-white/70 dark:bg-black/30 border-b border-black/5 dark:border-white/10 z-20 shrink-0 backdrop-blur-[70px]" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)', paddingBottom: '12px' }}>
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setShowAboutModal(true)}>
           <Logo className="w-8 h-8 transition-colors duration-300" style={{ color: nativeAccentColor }} />
@@ -794,11 +785,20 @@ export const App: React.FC = () => {
                 if (isReorderingRef.current) return;
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) {
-                    setActiveStationId(targetStation.id);
-                    if (status === 'playing' || status === 'loading') {
-                        setPlayingStationId(targetStation.id);
-                        if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
-                        play(targetStation.streamUrl);
+                    // Check if the target station is actually different from the current active one
+                    // to prevent stream restart during favorites-only toggle
+                    const isNewStation = targetStation.id !== activeStationId;
+                    
+                    if (isNewStation) {
+                        setActiveStationId(targetStation.id);
+                        if (status === 'playing' || status === 'loading') {
+                            // Only restart audio if the target station ID is different from what's playing
+                            if (targetStation.id !== playingStationId) {
+                                setPlayingStationId(targetStation.id);
+                                if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
+                                play(targetStation.streamUrl);
+                            }
+                        }
                     }
                 }
                 hapticImpact('light');
