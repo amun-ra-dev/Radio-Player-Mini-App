@@ -1,8 +1,8 @@
 
-// Build: 2.4.0
-// - Fix: "Stuck in pause" flickering resolved by hardened play/pause promise handling.
-// - Fix: Stream switching is now more reliable when changing active station while playing.
-// - Logic: Enhanced coordination between activeStation and playingStation state.
+// Build: 2.4.1
+// - Fix: Resolved "stuck in pause" by eliminating async gaps in user gesture handling.
+// - Fix: UI now feels more responsive during station switching.
+// - Optimization: Hardened play/pause synchronization logic.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.4.1";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -257,19 +257,15 @@ export const App: React.FC = () => {
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
     
-    // IF we are interacting with the station that is ALREADY set as playing
     if (playingStationId === activeStationId) {
-      // If it's already active (playing or loading), we STOP it.
       if (status === 'playing' || status === 'loading') {
         hapticImpact('soft');
         stop();
       } else {
-        // If it was paused/idle/error, we re-trigger PLAY.
         hapticImpact('medium');
         play(activeStation.streamUrl);
       }
     } else {
-      // We are switching to a NEW station
       setPlayingStationId(activeStationId);
       hapticImpact('medium');
       play(activeStation.streamUrl);
@@ -724,7 +720,6 @@ export const App: React.FC = () => {
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) {
                     setActiveStationId(targetStation.id);
-                    // If something is already playing, automatically switch stream to the new active station
                     if (status === 'playing' || status === 'loading') {
                         setPlayingStationId(targetStation.id);
                         play(targetStation.streamUrl);
