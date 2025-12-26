@@ -17,13 +17,16 @@ export const useAudio = (streamUrl: string | null) => {
 
   const playAudioRef = useRef<((overrideUrl?: string) => void) | null>(null);
 
-  const handleAudioError = useCallback((_e?: any) => {
+  const handleAudioError = useCallback((e?: any) => {
     if (!shouldBePlayingRef.current) return;
+
+    const error = audioRef.current?.error;
+    console.warn(`Audio playback error:`, error?.message || 'Unknown error', e);
 
     if (retryCountRef.current < 3) {
       retryCountRef.current++;
       const delay = retryCountRef.current === 1 ? 1500 : retryCountRef.current === 2 ? 4000 : 8000;
-      console.log(`Audio error, retrying in ${delay}ms (attempt ${retryCountRef.current})...`);
+      console.log(`Retrying in ${delay}ms (attempt ${retryCountRef.current})...`);
       setTimeout(() => {
         if (shouldBePlayingRef.current) {
           playAudioRef.current?.();
@@ -43,10 +46,8 @@ export const useAudio = (streamUrl: string | null) => {
         return;
     }
 
-    // Принудительно ставим флаг, что мы ДОЛЖНЫ играть
     shouldBePlayingRef.current = true;
 
-    // СТРОГАЯ ПРОВЕРКА: Если этот URL уже играет или загружается, НЕ трогаем его
     if (urlToPlay === currentLoadedUrlRef.current && (status === 'playing' || status === 'loading')) {
       return;
     }
@@ -64,18 +65,21 @@ export const useAudio = (streamUrl: string | null) => {
     const audio = audioRef.current;
     audio.volume = volume;
 
-    const useHls = (url: string) => {
+    const isHlsUrl = (url: string) => {
         const lowerUrl = url.toLowerCase();
         return lowerUrl.includes('.m3u8');
     };
 
     try {
-      if (useHls(urlToPlay) && typeof Hls !== 'undefined' && Hls.isSupported()) {
+      if (isHlsUrl(urlToPlay) && typeof Hls !== 'undefined' && Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
           backBufferLength: 60,
-          manifestLoadingMaxRetry: 2
+          manifestLoadingMaxRetry: 2,
+          xhrSetup: (xhr: any) => {
+            xhr.withCredentials = false;
+          }
         });
         hlsRef.current = hls;
         hls.loadSource(urlToPlay);
@@ -83,7 +87,9 @@ export const useAudio = (streamUrl: string | null) => {
         
         hls.on(Hls.Events.MANIFEST_PARSED, async () => {
           if (currentVersion !== requestVersionRef.current) return;
-          try { await audio.play(); } catch (e: any) {
+          try { 
+            await audio.play(); 
+          } catch (e: any) {
             if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
               handleAudioError();
             }
@@ -101,22 +107,25 @@ export const useAudio = (streamUrl: string | null) => {
           }
         });
       } else {
-        if (audio.src !== urlToPlay) {
-          audio.src = urlToPlay;
-        }
+        // Native path (MP3/AAC streams or iOS native HLS)
+        audio.pause();
+        audio.src = urlToPlay;
+        // CRITICAL: Must call load() to reset the internal pipeline and avoid "no supported source" errors on source change
+        audio.load();
         
         if (currentVersion !== requestVersionRef.current) return;
+        
         try {
           await audio.play();
         } catch (e: any) {
           if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
-            console.error("Native Playback failed:", e);
+             handleAudioError(e);
           }
         }
       }
     } catch (err) {
       if (currentVersion === requestVersionRef.current) {
-        handleAudioError();
+        handleAudioError(err);
       }
     }
   }, [streamUrl, volume, handleAudioError, status]);
@@ -140,25 +149,31 @@ export const useAudio = (streamUrl: string | null) => {
   useEffect(() => {
     if (!audioRef.current) {
       const audio = new Audio();
-      audio.preload = "none";
+      audio.preload = "metadata";
       audio.crossOrigin = "anonymous";
       
       audio.onplaying = () => { setStatus('playing'); retryCountRef.current = 0; };
-      audio.onpause = () => { setStatus(prev => (prev === 'loading' || shouldBePlayingRef.current) ? 'loading' : 'paused'); };
+      audio.onpause = () => { 
+        if (!shouldBePlayingRef.current) setStatus('paused');
+      };
       audio.onwaiting = () => { if (shouldBePlayingRef.current) setStatus('loading'); };
-      audio.onerror = handleAudioError;
+      audio.onerror = (e) => handleAudioError(e);
+      audio.onstalled = () => {
+        if (shouldBePlayingRef.current && status === 'playing') {
+           setStatus('loading');
+        }
+      };
       
       audioRef.current = audio;
     }
 
     return () => { stopAndCleanup(); };
-  }, [handleAudioError, stopAndCleanup]);
+  }, [handleAudioError, stopAndCleanup, status]);
 
   const lastEffectUrlRef = useRef<string | null>(null);
   useEffect(() => {
     if (streamUrl && streamUrl !== lastEffectUrlRef.current) {
       lastEffectUrlRef.current = streamUrl;
-      // Если URL сменился и мы уже в режиме "играть", запускаем новый поток
       if (shouldBePlayingRef.current) {
         playAudioRef.current?.(streamUrl);
       }
