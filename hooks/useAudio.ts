@@ -48,14 +48,12 @@ export const useAudio = (streamUrl: string | null) => {
 
     shouldBePlayingRef.current = true;
 
-    // We only skip if the URL is the SAME and it is already PLAYING. 
-    // If it's 'loading', we allow re-triggering to fix stuck states.
+    // We only skip if the URL is the SAME and it is already PLAYING.
     if (urlToPlay === currentLoadedUrlRef.current && status === 'playing') {
       return;
     }
 
     const currentVersion = ++requestVersionRef.current;
-    currentLoadedUrlRef.current = urlToPlay;
     
     if (hlsRef.current) {
       try { hlsRef.current.destroy(); } catch (e) { console.warn("Error destroying HLS instance:", e); }
@@ -74,6 +72,7 @@ export const useAudio = (streamUrl: string | null) => {
 
     try {
       if (isHlsUrl(urlToPlay) && typeof Hls !== 'undefined' && Hls.isSupported()) {
+        currentLoadedUrlRef.current = urlToPlay;
         const hls = new Hls({
           enableWorker: true,
           lowLatencyMode: true,
@@ -110,15 +109,16 @@ export const useAudio = (streamUrl: string | null) => {
         });
       } else {
         // Native path (MP3/AAC streams or iOS native HLS)
-        audio.pause();
-        audio.src = urlToPlay;
-        // CRITICAL: Must call load() to reset the internal pipeline and avoid "no supported source" errors on source change
-        audio.load();
+        if (urlToPlay !== currentLoadedUrlRef.current) {
+            audio.pause();
+            audio.src = urlToPlay;
+            currentLoadedUrlRef.current = urlToPlay;
+            // Removed load() here to prevent interrupting the connection phase
+        }
         
         if (currentVersion !== requestVersionRef.current) return;
         
         try {
-          // Some streams need a tick to be ready
           await audio.play();
         } catch (e: any) {
           if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
@@ -153,18 +153,33 @@ export const useAudio = (streamUrl: string | null) => {
   useEffect(() => {
     if (!audioRef.current) {
       const audio = new Audio();
-      // REMOVED crossOrigin = "anonymous" because it blocks non-CORS radio streams
       audio.preload = "auto";
       
-      audio.onplaying = () => { setStatus('playing'); retryCountRef.current = 0; };
+      const onStartPlaying = () => { 
+        setStatus('playing'); 
+        retryCountRef.current = 0; 
+      };
+
+      audio.onplaying = onStartPlaying;
+      audio.oncanplay = () => {
+        if (shouldBePlayingRef.current && status === 'loading') {
+          onStartPlaying();
+        }
+      };
+
       audio.onpause = () => { 
         if (!shouldBePlayingRef.current) setStatus('paused');
       };
-      audio.onwaiting = () => { if (shouldBePlayingRef.current) setStatus('loading'); };
+      
+      audio.onwaiting = () => { 
+        if (shouldBePlayingRef.current) setStatus('loading'); 
+      };
+      
       audio.onerror = (e) => handleAudioError(e);
+      
       audio.onstalled = () => {
         if (shouldBePlayingRef.current && status === 'playing') {
-           console.log("Stream stalled, trying to recover...");
+           console.log("Stream stalled, trying to buffer...");
            setStatus('loading');
         }
       };

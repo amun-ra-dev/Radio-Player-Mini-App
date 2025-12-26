@@ -1,8 +1,8 @@
 
-// Build: 2.3.5
-// - Fix: Import counting (+X added, ~X updated) now works correctly.
-// - Fix: Improved audio playback compatibility for non-CORS streams.
-// - Logic: Import processing now performs calculations before notifying the user.
+// Build: 2.3.6
+// - Fix: Audio "Loading" hang fixed by optimized event handling.
+// - Fix: Corrected import counting (added/updated) with URL normalization.
+// - Logic: Improved extraction and validation of imported JSON data.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.3.5";
+const APP_VERSION = "2.3.6";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -512,15 +512,16 @@ export const App: React.FC = () => {
       } else if (Array.isArray(parsed)) {
         importedStations = parsed;
       } else if (typeof parsed === 'object') {
-        importedStations = [parsed];
+        if (Array.isArray(parsed.stations)) importedStations = parsed.stations;
+        else importedStations = [parsed];
       }
 
       const urlPattern = /^https?:\/\/.+/i;
-      const valid = importedStations.filter(s => 
-        (s.title || s.name) && 
-        (s.streamUrl || s.url) && 
-        urlPattern.test(s.streamUrl || s.url)
-      );
+      const valid = importedStations.filter(s => {
+        const url = (s.streamUrl || s.url || '').toString().trim();
+        const title = (s.title || s.name || '').toString().trim();
+        return title.length > 0 && url.length > 0 && urlPattern.test(url);
+      });
 
       if (valid.length === 0) {
         if (!isManual) {
@@ -536,32 +537,33 @@ export const App: React.FC = () => {
       let addedCount = 0;
       let updatedCount = 0;
 
-      const nextStations = [...stations];
-      const nextFavs = [...favorites];
+      const nextStationsList = [...stations];
+      const nextFavoritesList = [...favorites];
 
       valid.forEach(imp => {
-        const impUrl = imp.streamUrl || imp.url;
-        const impTitle = imp.title || imp.name;
-        const impCover = imp.coverUrl || imp.cover || '';
-        const impTags = Array.isArray(imp.tags) ? imp.tags : [];
+        const impUrl = (imp.streamUrl || imp.url).toString().trim();
+        const impTitle = (imp.title || imp.name).toString().trim();
+        const impCover = (imp.coverUrl || imp.cover || '').toString().trim();
+        const impTags = Array.isArray(imp.tags) ? imp.tags.map((t: any) => t.toString().trim()) : [];
         const impFav = imp.isFavorite === true;
 
-        const existingIdx = nextStations.findIndex(s => s.streamUrl === impUrl);
+        const normalizedImpUrl = impUrl.toLowerCase();
+        const existingIdx = nextStationsList.findIndex(s => s.streamUrl.toLowerCase().trim() === normalizedImpUrl);
 
         if (existingIdx !== -1) {
-          nextStations[existingIdx] = {
-            ...nextStations[existingIdx],
+          nextStationsList[existingIdx] = {
+            ...nextStationsList[existingIdx],
             name: impTitle,
-            coverUrl: impCover || nextStations[existingIdx].coverUrl,
-            tags: impTags.length > 0 ? impTags : nextStations[existingIdx].tags
+            coverUrl: impCover || nextStationsList[existingIdx].coverUrl,
+            tags: impTags.length > 0 ? impTags : nextStationsList[existingIdx].tags
           };
-          if (impFav && !nextFavs.includes(nextStations[existingIdx].id)) {
-            nextFavs.push(nextStations[existingIdx].id);
+          if (impFav && !nextFavoritesList.includes(nextStationsList[existingIdx].id)) {
+            nextFavoritesList.push(nextStationsList[existingIdx].id);
           }
           updatedCount++;
         } else {
           const newId = imp.id || Math.random().toString(36).substr(2, 9);
-          nextStations.push({
+          nextStationsList.push({
             id: newId,
             name: impTitle,
             streamUrl: impUrl,
@@ -569,13 +571,13 @@ export const App: React.FC = () => {
             tags: impTags,
             addedAt: Date.now()
           });
-          if (impFav) nextFavs.push(newId);
+          if (impFav) nextFavoritesList.push(newId);
           addedCount++;
         }
       });
 
-      setStations(nextStations);
-      setFavorites(nextFavs);
+      setStations(nextStationsList);
+      setFavorites(nextFavoritesList);
 
       hapticNotification('success');
       setSnackbar(`Итог: +${addedCount} добавлено, ~${updatedCount} обновлено`);
@@ -635,12 +637,12 @@ export const App: React.FC = () => {
       message: 'Добавить стандартный список станций?',
       onConfirm: () => {
         setStations(prev => {
-          const existingUrls = new Set(prev.map(s => s.streamUrl));
-          const unique = DEFAULT_STATIONS.filter(s => !existingUrls.has(s.streamUrl));
+          const existingUrls = new Set(prev.map(s => s.streamUrl.toLowerCase().trim()));
+          const unique = DEFAULT_STATIONS.filter(s => !existingUrls.has(s.streamUrl.toLowerCase().trim()));
           if (!activeStationId && unique.length > 0) setActiveStationId(unique[0].id);
           return [...prev, ...unique];
         });
-        setSnackbar(`Добавлено станций: ${DEFAULT_STATIONS.length}`); 
+        setSnackbar(`Добавлено новых станций: ${DEFAULT_STATIONS.length}`); 
         hapticNotification('success');
       }
     });
@@ -650,10 +652,10 @@ export const App: React.FC = () => {
   const addOrUpdateStation = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
-    const name = formData.get('name') as string;
-    const url = formData.get('url') as string;
-    const coverUrl = formData.get('coverUrl') as string;
-    const tagsStr = formData.get('tags') as string;
+    const name = (formData.get('name') as string).trim();
+    const url = (formData.get('url') as string).trim();
+    const coverUrl = (formData.get('coverUrl') as string).trim();
+    const tagsStr = (formData.get('tags') as string).trim();
     const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
     
     if (!name || !url) return;
