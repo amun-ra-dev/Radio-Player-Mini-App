@@ -1,8 +1,8 @@
 
-// Build: 2.5.2
-// - UI: Removed star icon from the station name on the main player screen.
+// Build: 2.5.3
 // - Fix: Prevented stream restart when toggling "Favorites Only" mode off.
-// - UX: Optimized Swiper slide change logic to avoid redundant audio reloads.
+// - UX: Implemented transition lock to stabilize Swiper during playlist updates.
+// - UI: Clean aesthetics maintained without redundant icons in station names.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.2";
+const APP_VERSION = "2.5.3";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -356,7 +356,7 @@ export const App: React.FC = () => {
         if (stationAtIdx) setActiveStationId(stationAtIdx.id);
     }
     hapticImpact('light');
-    setTimeout(() => { isReorderingRef.current = false; }, 50);
+    setTimeout(() => { isReorderingRef.current = false; }, 100);
   };
 
   const toggleFavorite = useCallback((id: string, e?: React.MouseEvent) => {
@@ -404,6 +404,10 @@ export const App: React.FC = () => {
     }
     
     const nextMode = !onlyFavoritesMode;
+    
+    // CRITICAL: Block slide change logic during mode toggle to prevent stream restart
+    isReorderingRef.current = true;
+    
     setOnlyFavoritesMode(nextMode); 
     hapticImpact('medium');
     setSnackbar(nextMode ? 'Режим избранного: ВКЛ' : 'Режим избранного: ВЫКЛ');
@@ -428,6 +432,11 @@ export const App: React.FC = () => {
         }
       }
     }
+    
+    // Release lock after enough time for Swiper to adjust internal state
+    setTimeout(() => {
+      isReorderingRef.current = false;
+    }, 300);
   }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, stations, favorites, activeStationId, lastPlayedFavoriteId, status, play]);
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => {
@@ -782,7 +791,9 @@ export const App: React.FC = () => {
             <Swiper
               onSwiper={setSwiperInstance}
               onSlideChange={(swiper) => {
+                // LOCK CHECK: Skip internal logic if we are in a transition (mode toggle or reorder)
                 if (isReorderingRef.current) return;
+                
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) {
                     const isNewStation = targetStation.id !== activeStationId;
@@ -790,6 +801,7 @@ export const App: React.FC = () => {
                     if (isNewStation) {
                         setActiveStationId(targetStation.id);
                         if (status === 'playing' || status === 'loading') {
+                            // Only restart audio if the target station ID is different from what's playing
                             if (targetStation.id !== playingStationId) {
                                 setPlayingStationId(targetStation.id);
                                 if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
