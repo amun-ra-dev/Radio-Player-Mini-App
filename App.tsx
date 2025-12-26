@@ -1,7 +1,7 @@
 
-// Build: 2.5.1
+// Build: 2.5.2
+// - UI: Removed star icon from the station name on the main player screen.
 // - Fix: Prevented stream restart when toggling "Favorites Only" mode off.
-// - UI: Real-time dynamic accent synchronization with Telegram.
 // - UX: Optimized Swiper slide change logic to avoid redundant audio reloads.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.1";
+const APP_VERSION = "2.5.2";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -785,14 +785,11 @@ export const App: React.FC = () => {
                 if (isReorderingRef.current) return;
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) {
-                    // Check if the target station is actually different from the current active one
-                    // to prevent stream restart during favorites-only toggle
                     const isNewStation = targetStation.id !== activeStationId;
                     
                     if (isNewStation) {
                         setActiveStationId(targetStation.id);
                         if (status === 'playing' || status === 'loading') {
-                            // Only restart audio if the target station ID is different from what's playing
                             if (targetStation.id !== playingStationId) {
                                 setPlayingStationId(targetStation.id);
                                 if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
@@ -871,7 +868,6 @@ export const App: React.FC = () => {
                 <AnimatePresence mode="wait">
                   <motion.div key={activeStation?.id || 'none'} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
                     <div className="flex items-center justify-center gap-2 mb-1">
-                      {onlyFavoritesMode && <span className="text-amber-500 scale-75"><Icons.Star /></span>}
                       <h2 className="text-xl font-black truncate leading-tight tracking-tight">{activeStation?.name || 'Пусто'}</h2>
                     </div>
                     <p className="text-[10px] opacity-40 dark:opacity-60 uppercase tracking-[0.3em] font-black">
