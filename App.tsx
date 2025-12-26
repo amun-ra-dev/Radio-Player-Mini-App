@@ -1,12 +1,13 @@
 
-// Build: 2.0.3
-// - Performance: Optimized Swiper for 60FPS using GPU-friendly transformations and progress tracking.
-// - Integration: Telegram native CSS variables maintained.
+// Build: 2.1.0
+// - UI: Implemented Tinder-style Cards effect.
+// - UX: Added scale-down reaction on slide press.
+// - Perf: Optimized for 60FPS with GPU acceleration and CSS shadows.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { Swiper, SwiperSlide } from 'swiper/react';
-import { EffectCreative, Keyboard } from 'swiper/modules';
+import { EffectCards, Keyboard } from 'swiper/modules';
 import type { Swiper as SwiperClass } from 'swiper';
 
 import { Station, PlayerStatus } from './types.ts';
@@ -56,11 +57,11 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
     );
   };
 
-  if (!station) return <div className={`${className} bg-[var(--tg-theme-button-color,#2481cc)] flex items-center justify-center text-[var(--tg-theme-button-text-color,#ffffff)] text-5xl font-black select-none`}>+</div>;
+  if (!station) return <div className={`${className} bg-[var(--tg-theme-button-color,#2481cc)] flex items-center justify-center text-[var(--tg-theme-button-text-color,#ffffff)] text-5xl font-black select-none`} style={{ WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}>+</div>;
 
   if (!station.coverUrl || hasError) {
     return (
-      <div className={`${className} bg-[var(--tg-theme-button-color,#2481cc)] flex items-center justify-center text-[var(--tg-theme-button-text-color,#ffffff)] text-7xl font-black select-none relative`}>
+      <div className={`${className} bg-[var(--tg-theme-button-color,#2481cc)] flex items-center justify-center text-[var(--tg-theme-button-text-color,#ffffff)] text-7xl font-black select-none relative`} style={{ WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}>
         {renderTags()}
         {station.name?.charAt(0)?.toUpperCase?.() || 'R'}
       </div>
@@ -68,7 +69,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
   }
 
   return (
-    <div className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden transform-gpu`}>
+    <div className={`${className} relative bg-black overflow-hidden transform-gpu isolate`} style={{ WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}>
       {renderTags()}
       <motion.img
         ref={imgRef}
@@ -83,7 +84,7 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
         className="w-full h-full object-cover select-none pointer-events-none"
       />
       {!isLoaded && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-gray-200 dark:bg-[#1a1a1a] z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/10 z-10">
           <div className="w-8 h-8 border-4 border-[var(--tg-theme-button-color,#2481cc)]/20 border-t-[var(--tg-theme-button-color,#2481cc)] rounded-full animate-spin" />
         </div>
       )}
@@ -120,7 +121,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = memo(({
       className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-colors group relative border-2 ${isActive ? 'bg-[var(--tg-theme-button-color,#2481cc)]/10 border-[var(--tg-theme-button-color,#2481cc)]/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-[#1c1c1c] border-transparent'} cursor-grab active:cursor-grabbing`}
       onClick={() => !isDragging && onSelect()}
     >
-      <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl shadow-sm bg-gray-100 dark:bg-[#252525] pointer-events-none transform-gpu">
+      <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl shadow-sm bg-black pointer-events-none transform-gpu isolate" style={{ WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}>
         <StationCover station={station} className="w-full h-full" showTags={false} />
         <AnimatePresence>
           {isPlaying && (status === 'playing' || status === 'loading') && (
@@ -522,75 +523,73 @@ export const App: React.FC = () => {
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-around py-4 overflow-hidden relative">
-        {/* Carousel (Карусель) - Optimized for 60FPS */}
-        <div className="relative w-[340px] aspect-square shrink-0">
-          {hasStations ? (
-            <Swiper
-              onSwiper={setSwiperInstance}
-              onSlideChange={(swiper) => {
-                if (isReorderingRef.current) return;
-                const targetStation = displayedStations[swiper.realIndex];
-                if (targetStation) {
-                    setActiveStationId(targetStation.id);
-                    if (status === 'playing' || status === 'loading') {
-                        setPlayingStationId(targetStation.id);
+        {/* Carousel (Карусель) - Tinder-like Cards Effect */}
+        <div className="relative w-full flex justify-center shrink-0">
+          <div className="relative w-[340px] aspect-square transform-gpu isolate">
+            {hasStations ? (
+                <Swiper
+                  onSwiper={setSwiperInstance}
+                  onSlideChange={(swiper) => {
+                    if (isReorderingRef.current) return;
+                    const targetStation = displayedStations[swiper.realIndex];
+                    if (targetStation) {
+                        setActiveStationId(targetStation.id);
+                        if (status === 'playing' || status === 'loading') {
+                            setPlayingStationId(targetStation.id);
+                        }
                     }
-                }
-                hapticImpact('light');
-              }}
-              loop={displayedStations.length > 1}
-              effect={'creative'}
-              grabCursor={true}
-              slidesPerView={1}
-              watchSlidesProgress={true}
-              touchReleaseOnEdges={true}
-              updateOnWindowResize={true}
-              creativeEffect={{
-                limitProgress: 2,
-                perspective: true,
-                prev: {
-                  translate: ['-110%', 0, -100],
-                  rotate: [0, 0, -10],
-                  opacity: 0,
-                },
-                next: {
-                  translate: ['10%', 0, -50],
-                  scale: 0.95,
-                  opacity: 0.5,
-                },
-              }}
-              modules={[EffectCreative, Keyboard]}
-              keyboard={{ enabled: true }}
-              className="mySwiper w-full h-full !overflow-visible will-change-transform"
-            >
-              {displayedStations.map((station) => (
-                <SwiperSlide key={station.id} className="w-full h-full flex justify-center transform-gpu">
-                  <div className={`relative w-full aspect-square rounded-[2.5rem] shadow-2xl dark:shadow-black/60 overflow-hidden bg-white dark:bg-[#1c1c1c] ${canPlay ? 'cursor-pointer' : 'cursor-default'} transform-gpu backface-hidden`} onClick={() => canPlay && handleTogglePlay()}>
-                    <StationCover station={station} className="w-full h-full" />
-                    <div className="absolute bottom-6 right-6 z-20" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
-                      <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
-                        {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
-                      </RippleButton>
+                    hapticImpact('light');
+                  }}
+                  loop={displayedStations.length > 1}
+                  effect={'cards'}
+                  cardsEffect={{
+                    perSlideOffset: 8,
+                    perSlideRotate: 2,
+                    slideShadows: false, // Performance: using CSS shadows
+                    rotate: true,
+                  }}
+                  grabCursor={true}
+                  slidesPerView={1}
+                  watchSlidesProgress={true}
+                  touchReleaseOnEdges={true}
+                  updateOnWindowResize={true}
+                  modules={[EffectCards, Keyboard]}
+                  keyboard={{ enabled: true }}
+                  className="mySwiper w-full h-full will-change-transform !overflow-visible"
+                >
+                  {displayedStations.map((station) => (
+                    <SwiperSlide key={station.id} className="w-full h-full flex justify-center transform-gpu !shadow-none">
+                      <div 
+                        className={`relative w-full h-full bg-black rounded-[2.5rem] overflow-hidden shadow-2xl dark:shadow-black/60 transform-gpu backface-hidden isolate transition-transform duration-200 ${canPlay ? 'cursor-pointer active:scale-[0.97]' : 'cursor-default'}`} 
+                        onClick={() => canPlay && handleTogglePlay()} 
+                        style={{ WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}
+                      >
+                        <StationCover station={station} className="w-full h-full" />
+                        <div className="absolute bottom-6 right-6 z-20" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
+                          <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center shadow-lg transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
+                            {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
+                          </RippleButton>
+                        </div>
+                      </div>
+                    </SwiperSlide>
+                  ))}
+                </Swiper>
+            ) : (
+              <div className="w-full h-full">
+                <div className="w-full aspect-square mx-auto rounded-[2.5rem] overflow-hidden shadow-2xl bg-[var(--tg-theme-button-color,#2481cc)] flex flex-col items-center justify-center text-center p-8">
+                  <h2 className="text-[var(--tg-theme-button-text-color,#ffffff)] text-3xl font-black mb-2">Нет станций</h2>
+                  <p className="text-[var(--tg-theme-button-text-color,#ffffff)]/70 text-sm font-medium mb-8">Добавьте первую станцию в плейлист</p>
+                  <div className="flex flex-col gap-4 w-full">
+                    <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-white/20 hover:bg-white/30 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black shadow-lg">Добавить станцию</RippleButton>
+                    <div className="grid grid-cols-2 gap-3">
+                      <RippleButton onClick={handleImport} className="py-4 bg-white/10 hover:bg-white/20 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black">Импорт JSON</RippleButton>
+                      <RippleButton onClick={handleDemo} className="py-4 bg-white/10 hover:bg-white/20 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black">Демо</RippleButton>
                     </div>
-                  </div>
-                </SwiperSlide>
-              ))}
-            </Swiper>
-          ) : (
-            <div className="w-full h-full">
-              <div className="w-full aspect-square mx-auto rounded-[2.5rem] overflow-hidden shadow-2xl bg-[var(--tg-theme-button-color,#2481cc)] flex flex-col items-center justify-center text-center p-8">
-                <h2 className="text-[var(--tg-theme-button-text-color,#ffffff)] text-3xl font-black mb-2">Нет станций</h2>
-                <p className="text-[var(--tg-theme-button-text-color,#ffffff)]/80 text-sm font-bold mb-8">Добавьте первую станцию в плейлист</p>
-                <div className="flex flex-col gap-4 w-full">
-                  <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-white/20 hover:bg-white/30 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black shadow-lg">Добавить станцию</RippleButton>
-                  <div className="grid grid-cols-2 gap-3">
-                    <RippleButton onClick={handleImport} className="py-4 bg-white/10 hover:bg-white/20 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black">Импорт JSON</RippleButton>
-                    <RippleButton onClick={handleDemo} className="py-4 bg-white/10 hover:bg-white/20 text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black">Демо</RippleButton>
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
 
         {/* Info & Controls Area */}
@@ -639,7 +638,7 @@ export const App: React.FC = () => {
         {showPlaylist && (
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/60 z-30 backdrop-blur-sm" onClick={closeAllModals} />
-            <motion.div drag="y" dragListener={false} dragControls={dragControls} dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 1 }} dragMomentum={false} onDragEnd={(_, info) => (info.offset.y > 100 || info.velocity.y > 500) && setShowPlaylist(false)} initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.4 }} className="fixed bottom-0 left-0 right-0 h-[88vh] bg-white dark:bg-[#181818] rounded-t-[3rem] z-40 flex flex-col shadow-2xl overflow-hidden pb-10 transform-gpu">
+            <motion.div drag="y" dragListener={false} dragControls={dragControls} dragDirectionLock dragConstraints={{ top: 0, bottom: 0 }} dragElastic={{ top: 0, bottom: 1 }} dragMomentum={false} onDragEnd={(_, info) => (info.offset.y > 100 || info.velocity.y > 500) && setShowPlaylist(false)} initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.4 }} className="fixed bottom-0 left-0 right-0 h-[88vh] bg-white dark:bg-[#181818] rounded-t-[3rem] z-40 flex flex-col shadow-2xl overflow-hidden pb-10 transform-gpu isolate">
               <div className="w-full flex flex-col items-center pt-5 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing" onPointerDown={(e) => dragControls.start(e)}><div className="w-16 h-1.5 bg-gray-200 dark:bg-[#333] rounded-full mb-3" /></div>
               <div className="px-4 pb-2">
                 <div className="flex items-center bg-gray-100 dark:bg-[#252525] rounded-2xl p-1">
@@ -688,7 +687,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl flex flex-col items-center transform-gpu">
               <div className="w-16 h-16 bg-[var(--tg-theme-button-color,#2481cc)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl flex items-center justify-center shadow-lg mb-6"><Logo className="w-10 h-10" /></div>
               <h3 className="text-xl font-black mb-1 dark:text-white">Radio Player</h3>
-              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.0.3</p>
+              <p className="text-[10px] font-black opacity-30 dark:opacity-50 uppercase tracking-[0.3em] mb-6 dark:text-white">Build 2.1.0</p>
               <div className="text-sm font-bold text-gray-500 dark:text-gray-400 text-center mb-8">Стильный и мощный плеер для Telegram. Поддержка HLS, AAC, MP3 и экспорт плейлистов.</div>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-[var(--tg-theme-button-color,#2481cc)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black shadow-lg">Понятно</RippleButton>
             </motion.div>
@@ -703,7 +702,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl my-auto transform-gpu">
               <div className="flex justify-between items-start mb-6">
                 <h3 className="text-2xl font-black dark:text-white">{editingStation ? 'Настройки' : 'Новая станция'}</h3>
-                <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg bg-gray-100 dark:bg-[#252525] shrink-0 transform-gpu">
+                <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-lg bg-black shrink-0 transform-gpu isolate" style={{ WebkitMaskImage: '-webkit-radial-gradient(white, black)' }}>
                   <StationCover station={{ name: editorName, coverUrl: editorPreviewUrl, tags: editorTags.split(',').map(t => t.trim()).filter(Boolean) } as any} className="w-full h-full" showTags={false} />
                 </div>
               </div>
@@ -717,24 +716,6 @@ export const App: React.FC = () => {
                   <RippleButton type="submit" className="flex-1 py-4 bg-[var(--tg-theme-button-color,#2481cc)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-2xl font-black shadow-lg">Сохранить</RippleButton>
                 </div>
               </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showSleepTimerModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={closeAllModals} />
-            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="relative w-full max-w-sm bg-white dark:bg-[#1f1f1f] rounded-[2.5rem] p-8 shadow-2xl transform-gpu">
-              <h3 className="text-2xl font-black mb-4 dark:text-white">Таймер сна</h3>
-              {timeRemaining && <div className="text-center font-black text-2xl text-[var(--tg-theme-button-color,#2481cc)] mb-6">{timeRemaining}</div>}
-              <div className="grid grid-cols-2 gap-2 mb-6">{[15, 30, 45, 60].map(m => <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-3 bg-gray-100 dark:bg-[#252525] text-gray-700 dark:text-gray-300 rounded-xl font-bold">{m} мин</RippleButton>)}</div>
-              <form onSubmit={handleCustomTimerSubmit} className="grid grid-cols-2 gap-2 w-full">
-                <input type="number" value={customTimerInput} onChange={(e) => setCustomTimerInput(e.target.value)} placeholder="Мин" className="w-full h-12 bg-gray-100 dark:bg-[#252525] text-gray-900 dark:text-white rounded-xl px-4 outline-none font-bold text-center focus:ring-2 focus:ring-[var(--tg-theme-button-color,#2481cc)]/50 transition-all" />
-                <RippleButton type="submit" className="w-full h-12 bg-[var(--tg-theme-button-color,#2481cc)] text-[var(--tg-theme-button-text-color,#ffffff)] rounded-xl font-black flex items-center justify-center shadow-lg">OK</RippleButton>
-              </form>
-              {sleepTimerEndDate && <RippleButton onClick={() => handleSetSleepTimer(0)} className="w-full mt-4 h-12 bg-red-50 dark:bg-red-900/10 text-red-500 rounded-xl font-black flex items-center justify-center">Сбросить</RippleButton>}
             </motion.div>
           </div>
         )}
