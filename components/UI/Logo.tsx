@@ -1,9 +1,11 @@
 
 import React from 'react';
 
-export const Logo: React.FC<{ className?: string }> = ({ className = '' }) => (
+// Added style prop to the Logo component
+export const Logo: React.FC<{ className?: string; style?: React.CSSProperties }> = ({ className = '', style }) => (
   <svg
     className={className}
+    style={style}
     viewBox="0 0 48 48"
     fill="none"
     xmlns="http://www.w3.org/2000/svg"
