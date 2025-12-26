@@ -1,8 +1,8 @@
 
-// Build: 2.3.2
-// - Feature: Mute Toggle via 'M' key (Клавиша M для выкл/вкл звука).
-// - Logic: Layout-independent key handling (KeyM).
-// - UX: Volume memory for restoring levels after unmute.
+// Build: 2.3.4
+// - Feature: Advanced JSON extraction (handles ```json blocks from Telegram).
+// - Logic: Smart parsing of messages with "Station List" headers and markdown.
+// - Logic: Preserved 'M' hotkey for Mute and native layout-independent handling.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.3.2";
+const APP_VERSION = "2.3.4";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -412,30 +412,13 @@ export const App: React.FC = () => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
 
-      // Используем e.code для независимости от раскладки
       switch (e.code) {
-        case 'Space': 
-          e.preventDefault(); 
-          handleTogglePlay(); 
-          break;
-        case 'KeyM': 
-          e.preventDefault(); 
-          toggleMute(); 
-          break;
-        case 'ArrowLeft': 
-          navigateStation('prev'); 
-          break;
-        case 'ArrowRight': 
-          navigateStation('next'); 
-          break;
-        case 'ArrowUp': 
-          e.preventDefault(); 
-          setVolume(prev => Math.min(1, prev + 0.05)); 
-          break;
-        case 'ArrowDown': 
-          e.preventDefault(); 
-          setVolume(prev => Math.max(0, prev - 0.05)); 
-          break;
+        case 'Space': e.preventDefault(); handleTogglePlay(); break;
+        case 'KeyM': e.preventDefault(); toggleMute(); break;
+        case 'ArrowLeft': navigateStation('prev'); break;
+        case 'ArrowRight': navigateStation('next'); break;
+        case 'ArrowUp': e.preventDefault(); setVolume(prev => Math.min(1, prev + 0.05)); break;
+        case 'ArrowDown': e.preventDefault(); setVolume(prev => Math.max(0, prev - 0.05)); break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -457,7 +440,6 @@ export const App: React.FC = () => {
     setShowConfirmModal(true);
   };
 
-  // --- Export Logic ---
   const handleExport = () => {
     const exportData: ExportSchemaV2 = {
       schemaVersion: 2,
@@ -473,11 +455,15 @@ export const App: React.FC = () => {
       }))
     };
     
-    const text = JSON.stringify(exportData, null, 2);
-    navigator.clipboard.writeText(text)
+    // Create the fancy Telegram list text
+    const stationNames = stations.map(s => `- ${s.name}`).join('\n');
+    const jsonText = JSON.stringify(exportData, null, 2);
+    const clipboardText = `**🤖 @mdsradibot Station List:**\n\n${stationNames}\n\n\`\`\`json\n${jsonText}\n\`\`\``;
+
+    navigator.clipboard.writeText(clipboardText)
       .then(() => { 
         hapticNotification('success'); 
-        setSnackbar(`Экспорт v2 завершен! Скопировано ${stations.length} станций.`); 
+        setSnackbar(`Экспорт скопирован! (${stations.length} станций)`); 
       })
       .catch(() => { 
         hapticNotification('error'); 
@@ -485,22 +471,47 @@ export const App: React.FC = () => {
       });
   };
 
-  // --- Import Logic ---
-  const processImportText = (text: string, isManual = false) => {
+  const processImportText = (input: string, isManual = false) => {
     try {
-      let jsonStr = text.trim();
-      const start = text.indexOf('{');
-      const end = text.lastIndexOf('}');
-      const startArr = text.indexOf('[');
-      const endArr = text.lastIndexOf(']');
+      let workingText = input.trim();
+      
+      // Step 1: Detect if input is a wrapper JSON (like Telegram message object)
+      try {
+        const firstPass = JSON.parse(workingText);
+        // If the parsed object has a 'message' field (Telegram peer style), use its content
+        if (firstPass && typeof firstPass.message === 'string') {
+          workingText = firstPass.message.trim();
+        }
+      } catch (e) { /* skip */ }
 
-      if (start !== -1 && end !== -1 && (startArr === -1 || start < startArr)) {
-        jsonStr = text.substring(start, end + 1);
-      } else if (startArr !== -1 && endArr !== -1) {
-        jsonStr = text.substring(startArr, endArr + 1);
+      // Step 2: Advanced Extraction logic for Markdown blocks
+      // Matches ```json { ... } ``` or just ``` { ... } ```
+      const mdRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
+      const mdMatch = workingText.match(mdRegex);
+      
+      let jsonToParse = workingText;
+
+      if (mdMatch && mdMatch[1]) {
+        // We found a code block! Use its content.
+        jsonToParse = mdMatch[1].trim();
+      } else {
+        // No markdown block found, fallback to searching for first/last braces/brackets
+        const startObj = workingText.indexOf('{');
+        const startArr = workingText.indexOf('[');
+        const endObj = workingText.lastIndexOf('}');
+        const endArr = workingText.lastIndexOf(']');
+
+        const hasBraces = startObj !== -1 && endObj !== -1;
+        const hasBrackets = startArr !== -1 && endArr !== -1;
+
+        if (hasBraces && (!hasBrackets || startObj < startArr)) {
+          jsonToParse = workingText.substring(startObj, endObj + 1);
+        } else if (hasBrackets) {
+          jsonToParse = workingText.substring(startArr, endArr + 1);
+        }
       }
 
-      const parsed = JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonToParse);
       let importedStations: any[] = [];
 
       if (parsed.schemaVersion === 2 && Array.isArray(parsed.stations)) {
@@ -700,7 +711,6 @@ export const App: React.FC = () => {
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-evenly py-6 overflow-hidden relative">
-        {/* Carousel */}
         <div className="relative w-[340px] aspect-square shrink-0 transition-all duration-500">
           {hasStations ? (
             <Swiper
@@ -758,7 +768,6 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        {/* Controls */}
         <div className="w-full max-w-[360px] px-2 z-10 transition-all duration-500">
           <motion.div 
             layout
@@ -803,7 +812,6 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Playlist Modal */}
       <AnimatePresence>
         {showPlaylist && (
           <>
@@ -851,7 +859,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
       
-      {/* About Modal */}
       <AnimatePresence>
         {showAboutModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -871,7 +878,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Manual Import Modal */}
       <AnimatePresence>
         {showManualImport && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
@@ -902,7 +908,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Editor Modal */}
       <AnimatePresence>
         {showEditor && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6 overflow-y-auto">
@@ -931,7 +936,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Snackbar */}
       <AnimatePresence>
         {snackbar && (
           <motion.div initial={{ opacity: 0, y: 60, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 60, scale: 0.9 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-gray-900/90 dark:bg-blue-900/95 backdrop-blur-2xl text-white px-8 py-5 rounded-[2.5rem] font-bold flex items-center justify-between shadow-2xl border border-white/10">
@@ -941,7 +945,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Sleep Timer Modal */}
       <AnimatePresence>
         {showSleepTimerModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
@@ -963,7 +966,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Confirm Modal */}
       <AnimatePresence>
         {showConfirmModal && confirmData && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
