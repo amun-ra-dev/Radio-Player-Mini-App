@@ -1,8 +1,8 @@
 
-// Build: 2.3.6
-// - Fix: Audio "Loading" hang fixed by optimized event handling.
-// - Fix: Corrected import counting (added/updated) with URL normalization.
-// - Logic: Improved extraction and validation of imported JSON data.
+// Build: 2.4.0
+// - Fix: "Stuck in pause" flickering resolved by hardened play/pause promise handling.
+// - Fix: Stream switching is now more reliable when changing active station while playing.
+// - Logic: Enhanced coordination between activeStation and playingStation state.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.3.6";
+const APP_VERSION = "2.4.0";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -252,18 +252,29 @@ export const App: React.FC = () => {
     return stations.find(s => s.id === playingStationId) || null;
   }, [stations, playingStationId]);
 
-  const { status, volume, setVolume, togglePlay: baseTogglePlay, play, stop } = useAudio(playingStation?.streamUrl || null);
+  const { status, volume, setVolume, play, stop } = useAudio(playingStation?.streamUrl || null);
 
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
-    if (playingStationId === activeStationId && status !== 'idle') {
-      baseTogglePlay();
+    
+    // IF we are interacting with the station that is ALREADY set as playing
+    if (playingStationId === activeStationId) {
+      // If it's already active (playing or loading), we STOP it.
+      if (status === 'playing' || status === 'loading') {
+        hapticImpact('soft');
+        stop();
+      } else {
+        // If it was paused/idle/error, we re-trigger PLAY.
+        hapticImpact('medium');
+        play(activeStation.streamUrl);
+      }
     } else {
+      // We are switching to a NEW station
       setPlayingStationId(activeStationId);
       hapticImpact('medium');
       play(activeStation.streamUrl);
     }
-  }, [activeStationId, playingStationId, status, baseTogglePlay, activeStation, hapticImpact, play]);
+  }, [activeStationId, playingStationId, status, activeStation, hapticImpact, play, stop]);
 
   useEffect(() => {
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
@@ -713,7 +724,11 @@ export const App: React.FC = () => {
                 const targetStation = displayedStations[swiper.realIndex];
                 if (targetStation) {
                     setActiveStationId(targetStation.id);
-                    if (status === 'playing' || status === 'loading') setPlayingStationId(targetStation.id);
+                    // If something is already playing, automatically switch stream to the new active station
+                    if (status === 'playing' || status === 'loading') {
+                        setPlayingStationId(targetStation.id);
+                        play(targetStation.streamUrl);
+                    }
                 }
                 hapticImpact('light');
               }}
@@ -785,6 +800,10 @@ export const App: React.FC = () => {
               </div>
 
               <div className="w-full max-w-[240px] flex flex-col gap-3">
+                <div className="flex justify-between items-center mb-1">
+                    <span className="text-[8px] font-black text-blue-600/40 dark:text-white/20 uppercase tracking-widest">Громкость</span>
+                    <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 tabular-nums">{Math.round(volume * 100)}%</span>
+                </div>
                 <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-1.5 bg-blue-100/60 dark:bg-white/10 rounded-full appearance-none accent-blue-600 transition-all hover:h-2 cursor-pointer" disabled={!canPlay} />
               </div>
 

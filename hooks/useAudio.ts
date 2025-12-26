@@ -7,15 +7,22 @@ declare const Hls: any;
 export const useAudio = (streamUrl: string | null) => {
   const [status, setStatus] = useState<PlayerStatus>('idle');
   const [volume, setVolume] = useState(0.5);
+  
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hlsRef = useRef<any>(null);
   const retryCountRef = useRef(0);
   const shouldBePlayingRef = useRef(false);
   
   const requestVersionRef = useRef(0);
+  const playPromiseRef = useRef<Promise<void> | null>(null);
   const currentLoadedUrlRef = useRef<string | null>(null);
 
-  const playAudioRef = useRef<((overrideUrl?: string) => void) | null>(null);
+  const syncVolume = useCallback(() => {
+    if (audioRef.current) {
+        audioRef.current.volume = volume;
+        audioRef.current.muted = false;
+    }
+  }, [volume]);
 
   const handleAudioError = useCallback((e?: any) => {
     if (!shouldBePlayingRef.current) return;
@@ -23,13 +30,15 @@ export const useAudio = (streamUrl: string | null) => {
     const error = audioRef.current?.error;
     console.warn(`Audio playback error [${audioRef.current?.src}]:`, error?.message || 'Unknown error', e);
 
-    if (retryCountRef.current < 3) {
+    // If it's a "flicker" error (status resetting too fast), we might want to delay retry
+    if (retryCountRef.current < 5) { 
       retryCountRef.current++;
-      const delay = retryCountRef.current === 1 ? 1500 : retryCountRef.current === 2 ? 4000 : 8000;
-      console.log(`Retrying playback in ${delay}ms (attempt ${retryCountRef.current})...`);
+      const delay = 1000 * Math.pow(1.5, retryCountRef.current);
+      console.log(`Retrying playback in ${Math.round(delay)}ms (attempt ${retryCountRef.current})...`);
+      
       setTimeout(() => {
         if (shouldBePlayingRef.current) {
-          playAudioRef.current?.();
+          playAudioInternal(currentLoadedUrlRef.current || undefined);
         }
       }, delay);
     } else {
@@ -39,31 +48,52 @@ export const useAudio = (streamUrl: string | null) => {
     }
   }, []);
 
-  const playAudio = useCallback(async (overrideUrl?: string) => {
+  const stopAndCleanup = useCallback(async () => {
+    shouldBePlayingRef.current = false;
+    requestVersionRef.current++;
+    currentLoadedUrlRef.current = null;
+    
+    // If a play promise is pending, we should wait or handle it
+    if (playPromiseRef.current) {
+      try { await playPromiseRef.current; } catch {}
+      playPromiseRef.current = null;
+    }
+
+    if (hlsRef.current) {
+      try { hlsRef.current.destroy(); } catch (e) { console.warn("Error destroying HLS instance:", e); }
+      hlsRef.current = null;
+    }
+    
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      audioRef.current.load();
+    }
+    setStatus('paused');
+  }, []);
+
+  const playAudioInternal = useCallback(async (overrideUrl?: string) => {
     const urlToPlay = overrideUrl || streamUrl;
     if (!urlToPlay || !audioRef.current) {
         if (!urlToPlay) setStatus('idle');
         return;
     }
 
+    // Prepare for new play request
     shouldBePlayingRef.current = true;
-
-    // We only skip if the URL is the SAME and it is already PLAYING.
-    if (urlToPlay === currentLoadedUrlRef.current && status === 'playing') {
-      return;
-    }
-
     const currentVersion = ++requestVersionRef.current;
     
+    // Reset status UI immediately to prevent "flicker"
+    setStatus('loading');
+    
+    // Cleanup previous HLS instances
     if (hlsRef.current) {
-      try { hlsRef.current.destroy(); } catch (e) { console.warn("Error destroying HLS instance:", e); }
+      try { hlsRef.current.destroy(); } catch {}
       hlsRef.current = null;
     }
 
-    setStatus('loading');
-    
     const audio = audioRef.current;
-    audio.volume = volume;
+    syncVolume();
 
     const isHlsUrl = (url: string) => {
         const lowerUrl = url.toLowerCase();
@@ -77,7 +107,7 @@ export const useAudio = (streamUrl: string | null) => {
           enableWorker: true,
           lowLatencyMode: true,
           backBufferLength: 60,
-          manifestLoadingMaxRetry: 2,
+          manifestLoadingMaxRetry: 3,
           xhrSetup: (xhr: any) => {
             xhr.withCredentials = false;
           }
@@ -86,15 +116,16 @@ export const useAudio = (streamUrl: string | null) => {
         hls.loadSource(urlToPlay);
         hls.attachMedia(audio);
         
-        hls.on(Hls.Events.MANIFEST_PARSED, async () => {
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
           if (currentVersion !== requestVersionRef.current) return;
-          try { 
-            await audio.play(); 
-          } catch (e: any) {
-            if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
-              handleAudioError();
-            }
-          }
+          syncVolume();
+          const p = audio.play();
+          playPromiseRef.current = p;
+          p.catch(e => {
+             if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
+                handleAudioError(e);
+             }
+          });
         });
 
         hls.on(Hls.Events.ERROR, (_: any, data: any) => {
@@ -108,18 +139,20 @@ export const useAudio = (streamUrl: string | null) => {
           }
         });
       } else {
-        // Native path (MP3/AAC streams or iOS native HLS)
-        if (urlToPlay !== currentLoadedUrlRef.current) {
-            audio.pause();
-            audio.src = urlToPlay;
-            currentLoadedUrlRef.current = urlToPlay;
-            // Removed load() here to prevent interrupting the connection phase
-        }
+        // Native path (MP3/AAC)
+        // Resetting src is essential for live streams to jump to the edge
+        audio.pause();
+        audio.src = urlToPlay;
+        currentLoadedUrlRef.current = urlToPlay;
+        audio.load(); 
         
         if (currentVersion !== requestVersionRef.current) return;
         
+        syncVolume();
+        const p = audio.play();
+        playPromiseRef.current = p;
         try {
-          await audio.play();
+          await p;
         } catch (e: any) {
           if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
              console.error("Native playback failed:", e);
@@ -132,76 +165,69 @@ export const useAudio = (streamUrl: string | null) => {
         handleAudioError(err);
       }
     }
-  }, [streamUrl, volume, handleAudioError, status]);
+  }, [streamUrl, handleAudioError, syncVolume]);
 
-  playAudioRef.current = playAudio;
-
-  const stopAndCleanup = useCallback(() => {
-    requestVersionRef.current++;
-    currentLoadedUrlRef.current = null;
-    if (hlsRef.current) {
-      try { hlsRef.current.destroy(); } catch (e) { console.warn("Error destroying HLS instance:", e); }
-      hlsRef.current = null;
-    }
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute('src');
-      audioRef.current.load();
-    }
-  }, []);
-
+  // Master Setup for Audio Element Events
   useEffect(() => {
     if (!audioRef.current) {
       const audio = new Audio();
       audio.preload = "auto";
-      
-      const onStartPlaying = () => { 
-        setStatus('playing'); 
-        retryCountRef.current = 0; 
-      };
-
-      audio.onplaying = onStartPlaying;
-      audio.oncanplay = () => {
-        if (shouldBePlayingRef.current && status === 'loading') {
-          onStartPlaying();
-        }
-      };
-
-      audio.onpause = () => { 
-        if (!shouldBePlayingRef.current) setStatus('paused');
-      };
-      
-      audio.onwaiting = () => { 
-        if (shouldBePlayingRef.current) setStatus('loading'); 
-      };
-      
-      audio.onerror = (e) => handleAudioError(e);
-      
-      audio.onstalled = () => {
-        if (shouldBePlayingRef.current && status === 'playing') {
-           console.log("Stream stalled, trying to buffer...");
-           setStatus('loading');
-        }
-      };
-      
       audioRef.current = audio;
     }
 
-    return () => { stopAndCleanup(); };
-  }, [handleAudioError, stopAndCleanup, status]);
-
-  const lastEffectUrlRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (streamUrl && streamUrl !== lastEffectUrlRef.current) {
-      lastEffectUrlRef.current = streamUrl;
+    const audio = audioRef.current;
+    
+    const onPlaying = () => { 
       if (shouldBePlayingRef.current) {
-        playAudioRef.current?.(streamUrl);
+        setStatus('playing'); 
+        retryCountRef.current = 0; 
       }
-    } else if (!streamUrl) {
-      lastEffectUrlRef.current = null;
-    }
-  }, [streamUrl]);
+    };
 
+    const onWaiting = () => { 
+      if (shouldBePlayingRef.current) setStatus('loading'); 
+    };
+
+    const onPause = () => { 
+      if (!shouldBePlayingRef.current) setStatus('paused');
+    };
+
+    const onCanPlay = () => {
+      // For some browsers, we might need a push here
+      if (shouldBePlayingRef.current && status === 'loading') {
+        // Optional: audio.play() if not already trying
+      }
+    };
+
+    const onError = (e: any) => handleAudioError(e);
+
+    audio.addEventListener('playing', onPlaying);
+    audio.addEventListener('pause', onPause);
+    audio.addEventListener('waiting', onWaiting);
+    audio.addEventListener('canplay', onCanPlay);
+    audio.addEventListener('error', onError);
+    
+    return () => { 
+      audio.removeEventListener('playing', onPlaying);
+      audio.removeEventListener('pause', onPause);
+      audio.removeEventListener('waiting', onWaiting);
+      audio.removeEventListener('canplay', onCanPlay);
+      audio.removeEventListener('error', onError);
+    };
+  }, [handleAudioError]);
+
+  // Clean exit on unmount
+  useEffect(() => {
+    return () => {
+      if (hlsRef.current) try { hlsRef.current.destroy(); } catch {}
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+      }
+    };
+  }, []);
+
+  // Update volume when changed
   useEffect(() => {
     if (audioRef.current) {
       audioRef.current.volume = volume;
@@ -209,25 +235,14 @@ export const useAudio = (streamUrl: string | null) => {
   }, [volume]);
 
   const stop = useCallback(() => {
-    shouldBePlayingRef.current = false;
     stopAndCleanup();
-    setStatus('paused');
   }, [stopAndCleanup]);
-
-  const togglePlay = useCallback(() => {
-    if (status === 'playing' || status === 'loading') {
-      stop();
-    } else {
-      playAudio();
-    }
-  }, [status, stop, playAudio]);
 
   return {
     status,
     volume,
     setVolume,
-    togglePlay,
-    play: playAudio,
+    play: playAudioInternal,
     stop
   };
 };
