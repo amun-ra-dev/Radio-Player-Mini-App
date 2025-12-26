@@ -1,9 +1,8 @@
 
-// Build: 2.4.6
-// - UI: Real-time dynamic accent synchronization with Telegram.
-// - UI: Superior glass effects (backdrop-blur-[70px], opacity-1.5%).
-// - UX: High-expressivity destructive red with glowing effect in dark mode.
-// - Integration: Optimized theme state management for instantaneous UI response.
+// Build: 2.5.0
+// - Feature: Smart Favorites Mode (Auto-switching, state retention).
+// - UI: Enhanced Favorites indicator and empty state CTA.
+// - UX: Robust handling of un-favoriting active stations in filter mode.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.4.6";
+const APP_VERSION = "2.5.0";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -184,6 +183,7 @@ export const App: React.FC = () => {
   const [onlyFavoritesMode, setOnlyFavoritesMode] = useState<boolean>(() => localStorage.getItem('radio_only_favorites') === 'true');
   const [activeStationId, setActiveStationId] = useState<string>(() => localStorage.getItem('radio_last_active') || '');
   const [playingStationId, setPlayingStationId] = useState<string>(() => localStorage.getItem('radio_last_playing') || '');
+  const [lastPlayedFavoriteId, setLastPlayedFavoriteId] = useState<string>(() => localStorage.getItem('radio_last_fav') || '');
 
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [playlistFilter, setPlaylistFilter] = useState<'all' | 'favorites'>('all');
@@ -227,6 +227,7 @@ export const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('radio_only_favorites', String(onlyFavoritesMode)); }, [onlyFavoritesMode]);
   useEffect(() => { localStorage.setItem('radio_last_active', activeStationId); }, [activeStationId]);
   useEffect(() => { localStorage.setItem('radio_last_playing', playingStationId); }, [playingStationId]);
+  useEffect(() => { localStorage.setItem('radio_last_fav', lastPlayedFavoriteId); }, [lastPlayedFavoriteId]);
   useEffect(() => { if (!snackbar) return; const timer = setTimeout(() => setSnackbar(null), 3500); return () => clearTimeout(timer); }, [snackbar]);
 
   const hasStations = stations.length > 0;
@@ -237,7 +238,8 @@ export const App: React.FC = () => {
   const displayedStations = useMemo(() => {
     if (!stations.length) return [];
     if (!onlyFavoritesMode) return stations;
-    return stations.filter(s => favorites.includes(s.id));
+    const filtered = stations.filter(s => favorites.includes(s.id));
+    return filtered.length > 0 ? filtered : [];
   }, [stations, favorites, onlyFavoritesMode]);
 
   const stationsInPlaylist = useMemo(() => {
@@ -270,10 +272,11 @@ export const App: React.FC = () => {
       }
     } else {
       setPlayingStationId(activeStationId);
+      if (favorites.includes(activeStationId)) setLastPlayedFavoriteId(activeStationId);
       hapticImpact('medium');
       play(activeStation.streamUrl);
     }
-  }, [activeStationId, playingStationId, status, activeStation, hapticImpact, play, stop]);
+  }, [activeStationId, playingStationId, status, activeStation, hapticImpact, play, stop, favorites]);
 
   useEffect(() => {
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
@@ -357,22 +360,81 @@ export const App: React.FC = () => {
   };
 
   const toggleFavorite = useCallback((id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation(); hapticImpact('light');
-    setFavorites(prev => { const isFav = prev.includes(id); return isFav ? prev.filter(fid => fid !== id) : [...prev, id]; });
-  }, [hapticImpact]);
+    e?.stopPropagation(); 
+    hapticImpact('light');
+    
+    setFavorites(prev => {
+      const isFavNow = prev.includes(id);
+      const nextFavs = isFavNow ? prev.filter(fid => fid !== id) : [...prev, id];
+      
+      // Rule 5.1: If favoritesOnly mode is active and we un-favorited the ACTIVE station
+      if (onlyFavoritesMode && isFavNow && id === activeStationId) {
+        const favStations = stations.filter(s => nextFavs.includes(s.id));
+        if (favStations.length > 0) {
+          // Find next fallback favorite
+          const currentIndex = stations.findIndex(s => s.id === id);
+          const nextFav = favStations.find(s => stations.findIndex(st => st.id === s.id) > currentIndex) || favStations[0];
+          
+          setTimeout(() => {
+            setActiveStationId(nextFav.id);
+            if (status === 'playing' || status === 'loading') {
+              setPlayingStationId(nextFav.id);
+              setLastPlayedFavoriteId(nextFav.id);
+              play(nextFav.streamUrl);
+            }
+          }, 0);
+        } else {
+          // No more favorites left
+          setTimeout(() => {
+            setOnlyFavoritesMode(false);
+            setSnackbar('Режим избранного отключен: список пуст');
+          }, 0);
+        }
+      } else if (!isFavNow) {
+        // Just added to favorites
+        setLastPlayedFavoriteId(id);
+      }
+      
+      return nextFavs;
+    });
+  }, [hapticImpact, onlyFavoritesMode, activeStationId, stations, status, play]);
 
   const toggleOnlyFavoritesMode = useCallback(() => {
     if (!hasStations) return;
-    if (!hasFavorites && !onlyFavoritesMode) { setSnackbar('Добавьте в избранное'); hapticNotification('warning'); return; }
-    const nextMode = !onlyFavoritesMode;
-    setOnlyFavoritesMode(nextMode); hapticImpact('medium');
-    setSnackbar(nextMode ? 'Избранное: ВКЛ' : 'Избранное: ВЫКЛ');
-    if (swiperInstance) {
-        const nextList = nextMode ? stations.filter(s => favorites.includes(s.id)) : stations;
-        const targetIdx = Math.min(swiperInstance.realIndex, nextList.length - 1);
-        if (nextList[targetIdx]) setActiveStationId(nextList[targetIdx].id);
+    if (!hasFavorites && !onlyFavoritesMode) { 
+      setSnackbar('Добавьте хотя бы одну станцию в избранное'); 
+      hapticNotification('warning'); 
+      return; 
     }
-  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, stations, swiperInstance]);
+    
+    const nextMode = !onlyFavoritesMode;
+    setOnlyFavoritesMode(nextMode); 
+    hapticImpact('medium');
+    setSnackbar(nextMode ? 'Режим избранного: ВКЛ' : 'Режим избранного: ВЫКЛ');
+
+    // Rule 3A: Smart Continuation
+    if (nextMode) {
+      const currentIsFav = favorites.includes(activeStationId);
+      if (!currentIsFav) {
+        const favList = stations.filter(s => favorites.includes(s.id));
+        if (favList.length > 0) {
+          // Fallback Strategy (Rule 4.1)
+          const fallbackId = favorites.includes(lastPlayedFavoriteId) 
+            ? lastPlayedFavoriteId 
+            : favList[0].id;
+          
+          const fallbackStation = favList.find(s => s.id === fallbackId) || favList[0];
+          
+          setActiveStationId(fallbackStation.id);
+          if (status === 'playing' || status === 'loading') {
+            setPlayingStationId(fallbackStation.id);
+            setLastPlayedFavoriteId(fallbackStation.id);
+            play(fallbackStation.streamUrl);
+          }
+        }
+      }
+    }
+  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, stations, favorites, activeStationId, lastPlayedFavoriteId, status, play]);
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => {
     if (!swiperInstance) return;
@@ -388,10 +450,11 @@ export const App: React.FC = () => {
     } else {
         setActiveStationId(station.id);
         setPlayingStationId(station.id);
+        if (favorites.includes(station.id)) setLastPlayedFavoriteId(station.id);
         hapticImpact('light');
         play(station.streamUrl);
     }
-  }, [activeStationId, handleTogglePlay, hapticImpact, play]);
+  }, [activeStationId, handleTogglePlay, hapticImpact, play, favorites]);
 
   const closeAllModals = useCallback(() => {
     setShowEditor(false); setShowPlaylist(false); setShowConfirmModal(false);
@@ -724,7 +787,7 @@ export const App: React.FC = () => {
 
       <main className="flex-1 flex flex-col items-center justify-evenly py-6 overflow-hidden relative z-10">
         <div className="relative w-[340px] aspect-square shrink-0 transition-all duration-500">
-          {hasStations ? (
+          {displayedStations.length > 0 ? (
             <Swiper
               onSwiper={setSwiperInstance}
               onSlideChange={(swiper) => {
@@ -734,6 +797,7 @@ export const App: React.FC = () => {
                     setActiveStationId(targetStation.id);
                     if (status === 'playing' || status === 'loading') {
                         setPlayingStationId(targetStation.id);
+                        if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
                         play(targetStation.streamUrl);
                     }
                 }
@@ -768,17 +832,28 @@ export const App: React.FC = () => {
             </Swiper>
           ) : (
             <div className="w-full h-full">
-              <div className="w-full aspect-square mx-auto rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-[#3b82f6] to-[#1e40af] flex flex-col items-center justify-center text-center p-8 shadow-2xl">
-                <h2 className="text-white text-3xl font-black mb-2">Нет станций</h2>
-                <p className="text-white/80 text-sm font-bold mb-8">Добавьте первую станцию в плейлист</p>
-                <div className="flex flex-col gap-4 w-full">
-                  <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">Добавить станцию</RippleButton>
-                  <div className="grid grid-cols-2 gap-3">
-                    <RippleButton onClick={handleImport} className="py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black">Импорт</RippleButton>
-                    <RippleButton onClick={handleDemo} className="py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black">Демо</RippleButton>
-                  </div>
-                </div>
-              </div>
+              <AnimatePresence mode="wait">
+                {!hasStations ? (
+                  <motion.div key="no-stations" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full aspect-square mx-auto rounded-[2.5rem] overflow-hidden bg-gradient-to-br from-[#3b82f6] to-[#1e40af] flex flex-col items-center justify-center text-center p-8 shadow-2xl">
+                    <h2 className="text-white text-3xl font-black mb-2">Нет станций</h2>
+                    <p className="text-white/80 text-sm font-bold mb-8">Добавьте первую станцию в плейлист</p>
+                    <div className="flex flex-col gap-4 w-full">
+                      <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black">Добавить станцию</RippleButton>
+                      <div className="grid grid-cols-2 gap-3">
+                        <RippleButton onClick={handleImport} className="py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black">Импорт</RippleButton>
+                        <RippleButton onClick={handleDemo} className="py-4 bg-white/10 hover:bg-white/20 text-white rounded-2xl font-black">Демо</RippleButton>
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div key="no-favorites" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full aspect-square mx-auto rounded-[2.5rem] overflow-hidden bg-white/10 backdrop-blur-3xl border-2 border-dashed border-white/20 flex flex-col items-center justify-center text-center p-8 shadow-2xl">
+                    <div className="text-amber-500 mb-6 scale-150"><Icons.Star /></div>
+                    <h2 className="text-2xl font-black mb-2 tracking-tight">Нет избранных</h2>
+                    <p className="opacity-60 text-sm font-bold mb-8 px-4">Добавьте хотя бы одну станцию в избранное, чтобы использовать этот режим</p>
+                    <RippleButton onClick={toggleOnlyFavoritesMode} className="py-4 px-10 text-white rounded-2xl font-black shadow-xl" style={{ backgroundColor: nativeAccentColor }}>Показать все</RippleButton>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           )}
         </div>
@@ -795,9 +870,12 @@ export const App: React.FC = () => {
               <div className="text-center w-full px-2 min-h-[50px] flex flex-col justify-center">
                 <AnimatePresence mode="wait">
                   <motion.div key={activeStation?.id || 'none'} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-                    <h2 className="text-xl font-black mb-1 truncate leading-tight tracking-tight">{activeStation?.name || 'Пусто'}</h2>
+                    <div className="flex items-center justify-center gap-2 mb-1">
+                      {onlyFavoritesMode && <span className="text-amber-500 scale-75"><Icons.Star /></span>}
+                      <h2 className="text-xl font-black truncate leading-tight tracking-tight">{activeStation?.name || 'Пусто'}</h2>
+                    </div>
                     <p className="text-[10px] opacity-40 dark:opacity-60 uppercase tracking-[0.3em] font-black">
-                        {!activeStation ? 'Выберите источник' : 
+                        {!activeStation ? (onlyFavoritesMode ? 'Нет избранных' : 'Выберите источник') : 
                          (playingStationId === activeStationId && status === 'playing' ? 'В эфире' : 
                           playingStationId === activeStationId && status === 'loading' ? 'Загрузка...' : 
                           'Пауза')}
@@ -961,7 +1039,7 @@ export const App: React.FC = () => {
         {showSleepTimerModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={closeAllModals} />
-            <motion.div initial={{ scale: 0.9, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 30 }} className="relative w-full max-w-sm bg-white/95 dark:bg-black/85 rounded-[3.5rem] p-10 border border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[70px]">
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 30 }} className="relative w-full max-sm bg-white/95 dark:bg-black/85 rounded-[3.5rem] p-10 border border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[70px]">
               <h3 className="text-2xl font-black mb-6 text-center tracking-tighter">Таймер сна</h3>
               {timeRemaining && <div className="text-center font-black text-3xl mb-8 tabular-nums" style={{ color: nativeAccentColor }}>{timeRemaining}</div>}
               <div className="grid grid-cols-2 gap-3 mb-8">
