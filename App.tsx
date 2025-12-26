@@ -1,8 +1,8 @@
 
-// Build: 2.2.9
-// - Feature: Import/Export Schema v2 (Новая система импорта/экспорта).
-// - Logic: Deduplication by streamUrl & merge strategy.
-// - UI: Restored utility buttons in Playlist with updated grid.
+// Build: 2.3.1
+// - UI: Removed 'Demo' button from Playlist modal (Убрал кнопку Демо из плейлиста).
+// - Logic: Robust JSON searching in clipboard text.
+// - UX: Auto-fallback to manual input if clipboard access fails.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.2.9";
+const APP_VERSION = "2.3.1";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -185,6 +185,8 @@ export const App: React.FC = () => {
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [playlistFilter, setPlaylistFilter] = useState<'all' | 'favorites'>('all');
   const [showEditor, setShowEditor] = useState(false);
+  const [showManualImport, setShowManualImport] = useState(false);
+  const [manualImportValue, setManualImportValue] = useState('');
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmData, setConfirmData] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -382,13 +384,14 @@ export const App: React.FC = () => {
 
   const closeAllModals = useCallback(() => {
     setShowEditor(false); setShowPlaylist(false); setShowConfirmModal(false);
-    setShowSleepTimerModal(false); setShowAboutModal(false); setEditingStation(null);
+    setShowSleepTimerModal(false); setShowAboutModal(false); setShowManualImport(false);
+    setEditingStation(null);
   }, []);
 
   useEffect(() => {
-    const isModalOpen = showEditor || showPlaylist || showConfirmModal || showSleepTimerModal || showAboutModal;
+    const isModalOpen = showEditor || showPlaylist || showConfirmModal || showSleepTimerModal || showAboutModal || showManualImport;
     setBackButton(isModalOpen, closeAllModals);
-  }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, setBackButton, closeAllModals]);
+  }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, showManualImport, setBackButton, closeAllModals]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -450,7 +453,7 @@ export const App: React.FC = () => {
   };
 
   // --- Import Logic ---
-  const processImportText = (text: string) => {
+  const processImportText = (text: string, isManual = false) => {
     try {
       let jsonStr = text.trim();
       const start = text.indexOf('{');
@@ -458,7 +461,7 @@ export const App: React.FC = () => {
       const startArr = text.indexOf('[');
       const endArr = text.lastIndexOf(']');
 
-      // Пытаемся вычленить JSON из текста (например, если он в блоке markdown)
+      // Находим границы JSON
       if (start !== -1 && end !== -1 && (startArr === -1 || start < startArr)) {
         jsonStr = text.substring(start, end + 1);
       } else if (startArr !== -1 && endArr !== -1) {
@@ -467,11 +470,9 @@ export const App: React.FC = () => {
 
       const parsed = JSON.parse(jsonStr);
       let importedStations: any[] = [];
-      let isV2 = false;
 
       if (parsed.schemaVersion === 2 && Array.isArray(parsed.stations)) {
         importedStations = parsed.stations;
-        isV2 = true;
       } else if (Array.isArray(parsed)) {
         importedStations = parsed;
       } else if (typeof parsed === 'object') {
@@ -486,14 +487,18 @@ export const App: React.FC = () => {
       );
 
       if (valid.length === 0) {
-        setSnackbar('Некорректный формат или нет валидных URL');
+        if (!isManual) {
+          setShowManualImport(true);
+          setSnackbar('JSON найден, но валидных станций нет');
+        } else {
+          setSnackbar('Нет валидных URL в данных');
+        }
         hapticNotification('error');
         return;
       }
 
       let added = 0;
       let updated = 0;
-      let skipped = 0;
 
       setStations(prev => {
         const next = [...prev];
@@ -509,20 +514,17 @@ export const App: React.FC = () => {
           const existingIdx = next.findIndex(s => s.streamUrl === impUrl);
 
           if (existingIdx !== -1) {
-            // Слияние (Merge strategy)
             next[existingIdx] = {
               ...next[existingIdx],
               name: impTitle,
               coverUrl: impCover || next[existingIdx].coverUrl,
               tags: impTags.length > 0 ? impTags : next[existingIdx].tags
             };
-            
             if (impFav && !nextFavs.includes(next[existingIdx].id)) {
               nextFavs.push(next[existingIdx].id);
             }
             updated++;
           } else {
-            // Добавление новой
             const newId = imp.id || Math.random().toString(36).substr(2, 9);
             next.push({
               id: newId,
@@ -542,26 +544,39 @@ export const App: React.FC = () => {
       });
 
       hapticNotification('success');
-      setSnackbar(`Импорт: +${added}, ~${updated}, !${skipped}`);
+      setSnackbar(`Итог: +${added} добавлено, ~${updated} обновлено`);
       setShowPlaylist(false);
+      setShowManualImport(false);
+      setManualImportValue('');
 
     } catch (e) {
+      if (!isManual) {
+        setShowManualImport(true);
+        setSnackbar('JSON не найден. Вставьте данные вручную.');
+      } else {
+        setSnackbar('Ошибка парсинга. Проверьте структуру JSON.');
+      }
       hapticNotification('error');
-      setSnackbar('Ошибка парсинга JSON. Проверьте буфер.');
     }
   };
 
   const handleImport = async () => {
     try {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        setShowManualImport(true);
+        return;
+      }
       const text = await navigator.clipboard.readText();
       if (text && (text.includes('{') || text.includes('['))) {
         processImportText(text);
       } else {
-        setSnackbar('Буфер обмена не содержит JSON');
+        setShowManualImport(true);
+        setSnackbar('Буфер пуст. Вставьте JSON вручную.');
         hapticNotification('warning');
       }
     } catch (e) {
-      setSnackbar('Нет доступа к буферу обмена');
+      // Fallback if clipboard access denied
+      setShowManualImport(true);
     }
   };
 
@@ -634,7 +649,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="flex flex-col overflow-hidden text-[#222222] dark:text-white bg-[radial-gradient(circle_at_center,_#ffffff_0%,_#f0f7ff_100%)] dark:bg-[radial-gradient(circle_at_center,_#1a1c26_0%,_#12141a_100%)] transition-colors duration-500" style={{ height: 'var(--tg-viewport-height, 100vh)' }}>
-      {/* Header (Head) */}
+      {/* Header */}
       <div className="flex items-center justify-between px-6 bg-blue-50/80 dark:bg-[#161922] border-b border-blue-100/50 dark:border-blue-900/30 z-20 shrink-0 backdrop-blur-md" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)', paddingBottom: '12px' }}>
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setShowAboutModal(true)}>
           <Logo className="w-8 h-8 text-blue-600 dark:text-blue-400" />
@@ -654,7 +669,7 @@ export const App: React.FC = () => {
       </div>
 
       <main className="flex-1 flex flex-col items-center justify-evenly py-6 overflow-hidden relative">
-        {/* Carousel Area - Independent Block */}
+        {/* Carousel */}
         <div className="relative w-[340px] aspect-square shrink-0 transition-all duration-500">
           {hasStations ? (
             <Swiper
@@ -712,7 +727,7 @@ export const App: React.FC = () => {
           )}
         </div>
 
-        {/* Control Block - Separate Floating Block */}
+        {/* Controls */}
         <div className="w-full max-w-[360px] px-2 z-10 transition-all duration-500">
           <motion.div 
             layout
@@ -793,10 +808,9 @@ export const App: React.FC = () => {
                 <div className="mt-8 flex flex-col gap-4 mb-safe pb-16">
                   <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); setShowPlaylist(false); }} className="w-full p-6 rounded-[2rem] border-2 border-dashed border-blue-100 dark:border-white/5 text-blue-400 dark:text-white/20 font-black flex items-center justify-center gap-3 transition-all hover:bg-blue-50/50 dark:hover:bg-white/5"><Icons.Add /> Добавить станцию</RippleButton>
                   
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-gray-500 dark:text-gray-400"><Icons.Import /> <span className="mt-1">Импорт</span></RippleButton>
                     <RippleButton onClick={handleExport} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-gray-500 dark:text-gray-400"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
-                    <RippleButton onClick={handleDemo} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-blue-500/70 dark:text-blue-400/50"><Icons.Help /> <span className="mt-1">Демо</span></RippleButton>
                     <RippleButton onClick={handleReset} className="flex flex-col items-center justify-center p-4 bg-white dark:bg-white/5 rounded-2xl text-[10px] font-black text-red-400/70 dark:text-red-900/50"><Icons.Reset /> <span className="mt-1">Сброс</span></RippleButton>
                   </div>
                 </div>
@@ -818,9 +832,40 @@ export const App: React.FC = () => {
                 <p className="text-[11px] font-black opacity-30 dark:opacity-40 uppercase tracking-[0.4em] dark:text-white mt-1">Build {APP_VERSION}</p>
               </div>
 
-              <div className="text-[13px] font-bold text-gray-400 dark:text-gray-500 text-center mb-8 px-6 leading-relaxed">Премиальный плеер с разделенными функциональными зонами и поддержкой импорта v2.</div>
+              <div className="text-[13px] font-bold text-gray-400 dark:text-gray-500 text-center mb-8 px-6 leading-relaxed">Премиальный плеер с интеллектуальной дедупликацией при импорте.</div>
               
               <RippleButton onClick={closeAllModals} className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black shadow-2xl shadow-blue-600/20 transition-transform active:scale-95">Закрыть</RippleButton>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Manual Import Modal */}
+      <AnimatePresence>
+        {showManualImport && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={closeAllModals} />
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 30 }} className="relative w-full max-w-sm bg-white dark:bg-[#12141a] rounded-[3.5rem] p-8 flex flex-col border border-blue-50/10 dark:border-white/5">
+              <h3 className="text-2xl font-black mb-2 dark:text-white text-center tracking-tighter">Ручной импорт</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center mb-6 font-bold">Вставьте JSON-код вашего плейлиста в поле ниже</p>
+              
+              <textarea 
+                value={manualImportValue}
+                onChange={(e) => setManualImportValue(e.target.value)}
+                placeholder='{ "stations": [...] }'
+                className="w-full h-48 bg-blue-50/50 dark:bg-white/5 text-gray-900 dark:text-white rounded-[1.5rem] p-4 outline-none font-mono text-[10px] focus:ring-2 focus:ring-blue-500/50 transition-all mb-6 resize-none"
+              />
+              
+              <div className="flex gap-4">
+                <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded-2xl font-black text-sm">Отмена</RippleButton>
+                <RippleButton 
+                  onClick={() => processImportText(manualImportValue, true)} 
+                  disabled={!manualImportValue.trim()}
+                  className={`flex-1 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-600/20 ${!manualImportValue.trim() && 'opacity-50 pointer-events-none'}`}
+                >
+                  Импорт
+                </RippleButton>
+              </div>
             </motion.div>
           </div>
         )}
@@ -855,9 +900,10 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* Snackbar */}
       <AnimatePresence>
         {snackbar && (
-          <motion.div initial={{ opacity: 0, y: 60, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 60, scale: 0.9 }} className="fixed bottom-12 left-8 right-8 z-50 bg-gray-900/90 dark:bg-blue-900/95 backdrop-blur-2xl text-white px-8 py-5 rounded-[2.5rem] font-bold flex items-center justify-between shadow-2xl border border-white/10">
+          <motion.div initial={{ opacity: 0, y: 60, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 60, scale: 0.9 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-gray-900/90 dark:bg-blue-900/95 backdrop-blur-2xl text-white px-8 py-5 rounded-[2.5rem] font-bold flex items-center justify-between shadow-2xl border border-white/10">
             <span className="truncate pr-4 tracking-tight text-sm">{snackbar}</span>
             <button onClick={() => setSnackbar(null)} className="shrink-0 text-blue-400 dark:text-blue-300 font-black uppercase text-xs tracking-widest ml-4">OK</button>
           </motion.div>
