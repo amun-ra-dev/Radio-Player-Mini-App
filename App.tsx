@@ -1,8 +1,8 @@
 
-// Build: 2.3.4
-// - Feature: Advanced JSON extraction (handles ```json blocks from Telegram).
-// - Logic: Smart parsing of messages with "Station List" headers and markdown.
-// - Logic: Preserved 'M' hotkey for Mute and native layout-independent handling.
+// Build: 2.3.5
+// - Fix: Import counting (+X added, ~X updated) now works correctly.
+// - Fix: Improved audio playback compatibility for non-CORS streams.
+// - Logic: Import processing now performs calculations before notifying the user.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.3.4";
+const APP_VERSION = "2.3.5";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -455,7 +455,6 @@ export const App: React.FC = () => {
       }))
     };
     
-    // Create the fancy Telegram list text
     const stationNames = stations.map(s => `- ${s.name}`).join('\n');
     const jsonText = JSON.stringify(exportData, null, 2);
     const clipboardText = `**🤖 @mdsradibot Station List:**\n\n${stationNames}\n\n\`\`\`json\n${jsonText}\n\`\`\``;
@@ -475,27 +474,21 @@ export const App: React.FC = () => {
     try {
       let workingText = input.trim();
       
-      // Step 1: Detect if input is a wrapper JSON (like Telegram message object)
       try {
         const firstPass = JSON.parse(workingText);
-        // If the parsed object has a 'message' field (Telegram peer style), use its content
         if (firstPass && typeof firstPass.message === 'string') {
           workingText = firstPass.message.trim();
         }
       } catch (e) { /* skip */ }
 
-      // Step 2: Advanced Extraction logic for Markdown blocks
-      // Matches ```json { ... } ``` or just ``` { ... } ```
       const mdRegex = /```(?:json)?\s*([\s\S]*?)\s*```/i;
       const mdMatch = workingText.match(mdRegex);
       
       let jsonToParse = workingText;
 
       if (mdMatch && mdMatch[1]) {
-        // We found a code block! Use its content.
         jsonToParse = mdMatch[1].trim();
       } else {
-        // No markdown block found, fallback to searching for first/last braces/brackets
         const startObj = workingText.indexOf('{');
         const startArr = workingText.indexOf('[');
         const endObj = workingText.lastIndexOf('}');
@@ -540,54 +533,52 @@ export const App: React.FC = () => {
         return;
       }
 
-      let added = 0;
-      let updated = 0;
+      let addedCount = 0;
+      let updatedCount = 0;
 
-      setStations(prev => {
-        const next = [...prev];
-        const nextFavs = [...favorites];
+      const nextStations = [...stations];
+      const nextFavs = [...favorites];
 
-        valid.forEach(imp => {
-          const impUrl = imp.streamUrl || imp.url;
-          const impTitle = imp.title || imp.name;
-          const impCover = imp.coverUrl || imp.cover || '';
-          const impTags = Array.isArray(imp.tags) ? imp.tags : [];
-          const impFav = imp.isFavorite === true;
+      valid.forEach(imp => {
+        const impUrl = imp.streamUrl || imp.url;
+        const impTitle = imp.title || imp.name;
+        const impCover = imp.coverUrl || imp.cover || '';
+        const impTags = Array.isArray(imp.tags) ? imp.tags : [];
+        const impFav = imp.isFavorite === true;
 
-          const existingIdx = next.findIndex(s => s.streamUrl === impUrl);
+        const existingIdx = nextStations.findIndex(s => s.streamUrl === impUrl);
 
-          if (existingIdx !== -1) {
-            next[existingIdx] = {
-              ...next[existingIdx],
-              name: impTitle,
-              coverUrl: impCover || next[existingIdx].coverUrl,
-              tags: impTags.length > 0 ? impTags : next[existingIdx].tags
-            };
-            if (impFav && !nextFavs.includes(next[existingIdx].id)) {
-              nextFavs.push(next[existingIdx].id);
-            }
-            updated++;
-          } else {
-            const newId = imp.id || Math.random().toString(36).substr(2, 9);
-            next.push({
-              id: newId,
-              name: impTitle,
-              streamUrl: impUrl,
-              coverUrl: impCover || `https://picsum.photos/400/400?random=${Math.random()}`,
-              tags: impTags,
-              addedAt: Date.now()
-            });
-            if (impFav) nextFavs.push(newId);
-            added++;
+        if (existingIdx !== -1) {
+          nextStations[existingIdx] = {
+            ...nextStations[existingIdx],
+            name: impTitle,
+            coverUrl: impCover || nextStations[existingIdx].coverUrl,
+            tags: impTags.length > 0 ? impTags : nextStations[existingIdx].tags
+          };
+          if (impFav && !nextFavs.includes(nextStations[existingIdx].id)) {
+            nextFavs.push(nextStations[existingIdx].id);
           }
-        });
-
-        setFavorites(nextFavs);
-        return next;
+          updatedCount++;
+        } else {
+          const newId = imp.id || Math.random().toString(36).substr(2, 9);
+          nextStations.push({
+            id: newId,
+            name: impTitle,
+            streamUrl: impUrl,
+            coverUrl: impCover || `https://picsum.photos/400/400?random=${Math.random()}`,
+            tags: impTags,
+            addedAt: Date.now()
+          });
+          if (impFav) nextFavs.push(newId);
+          addedCount++;
+        }
       });
 
+      setStations(nextStations);
+      setFavorites(nextFavs);
+
       hapticNotification('success');
-      setSnackbar(`Итог: +${added} добавлено, ~${updated} обновлено`);
+      setSnackbar(`Итог: +${addedCount} добавлено, ~${updatedCount} обновлено`);
       setShowPlaylist(false);
       setShowManualImport(false);
       setManualImportValue('');

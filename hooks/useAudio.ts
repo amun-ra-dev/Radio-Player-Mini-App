@@ -21,12 +21,12 @@ export const useAudio = (streamUrl: string | null) => {
     if (!shouldBePlayingRef.current) return;
 
     const error = audioRef.current?.error;
-    console.warn(`Audio playback error:`, error?.message || 'Unknown error', e);
+    console.warn(`Audio playback error [${audioRef.current?.src}]:`, error?.message || 'Unknown error', e);
 
     if (retryCountRef.current < 3) {
       retryCountRef.current++;
       const delay = retryCountRef.current === 1 ? 1500 : retryCountRef.current === 2 ? 4000 : 8000;
-      console.log(`Retrying in ${delay}ms (attempt ${retryCountRef.current})...`);
+      console.log(`Retrying playback in ${delay}ms (attempt ${retryCountRef.current})...`);
       setTimeout(() => {
         if (shouldBePlayingRef.current) {
           playAudioRef.current?.();
@@ -48,7 +48,9 @@ export const useAudio = (streamUrl: string | null) => {
 
     shouldBePlayingRef.current = true;
 
-    if (urlToPlay === currentLoadedUrlRef.current && (status === 'playing' || status === 'loading')) {
+    // We only skip if the URL is the SAME and it is already PLAYING. 
+    // If it's 'loading', we allow re-triggering to fix stuck states.
+    if (urlToPlay === currentLoadedUrlRef.current && status === 'playing') {
       return;
     }
 
@@ -116,9 +118,11 @@ export const useAudio = (streamUrl: string | null) => {
         if (currentVersion !== requestVersionRef.current) return;
         
         try {
+          // Some streams need a tick to be ready
           await audio.play();
         } catch (e: any) {
           if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
+             console.error("Native playback failed:", e);
              handleAudioError(e);
           }
         }
@@ -149,8 +153,8 @@ export const useAudio = (streamUrl: string | null) => {
   useEffect(() => {
     if (!audioRef.current) {
       const audio = new Audio();
-      audio.preload = "metadata";
-      audio.crossOrigin = "anonymous";
+      // REMOVED crossOrigin = "anonymous" because it blocks non-CORS radio streams
+      audio.preload = "auto";
       
       audio.onplaying = () => { setStatus('playing'); retryCountRef.current = 0; };
       audio.onpause = () => { 
@@ -160,6 +164,7 @@ export const useAudio = (streamUrl: string | null) => {
       audio.onerror = (e) => handleAudioError(e);
       audio.onstalled = () => {
         if (shouldBePlayingRef.current && status === 'playing') {
+           console.log("Stream stalled, trying to recover...");
            setStatus('loading');
         }
       };
