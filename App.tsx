@@ -1,8 +1,8 @@
 
-// Build: 2.3.1
-// - UI: Removed 'Demo' button from Playlist modal (Убрал кнопку Демо из плейлиста).
-// - Logic: Robust JSON searching in clipboard text.
-// - UX: Auto-fallback to manual input if clipboard access fails.
+// Build: 2.3.2
+// - Feature: Mute Toggle via 'M' key (Клавиша M для выкл/вкл звука).
+// - Logic: Layout-independent key handling (KeyM).
+// - UX: Volume memory for restoring levels after unmute.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.3.1";
+const APP_VERSION = "2.3.2";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -206,6 +206,7 @@ export const App: React.FC = () => {
 
   const sleepTimerTimeoutRef = useRef<number | null>(null);
   const originalVolumeRef = useRef<number>(0.5);
+  const lastNonZeroVolumeRef = useRef<number>(0.5);
   const isFadingOutRef = useRef<boolean>(false);
   const dragControls = useDragControls();
   const listRef = useRef<HTMLDivElement>(null);
@@ -388,6 +389,19 @@ export const App: React.FC = () => {
     setEditingStation(null);
   }, []);
 
+  const toggleMute = useCallback(() => {
+    if (volume > 0) {
+      lastNonZeroVolumeRef.current = volume;
+      setVolume(0);
+      setSnackbar('Звук выключен');
+      hapticImpact('soft');
+    } else {
+      setVolume(lastNonZeroVolumeRef.current || 0.5);
+      setSnackbar('Звук включен');
+      hapticImpact('rigid');
+    }
+  }, [volume, setVolume, hapticImpact]);
+
   useEffect(() => {
     const isModalOpen = showEditor || showPlaylist || showConfirmModal || showSleepTimerModal || showAboutModal || showManualImport;
     setBackButton(isModalOpen, closeAllModals);
@@ -397,17 +411,36 @@ export const App: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
-      switch (e.key.toLowerCase()) {
-        case ' ': e.preventDefault(); handleTogglePlay(); break;
-        case 'arrowleft': navigateStation('prev'); break;
-        case 'arrowright': navigateStation('next'); break;
-        case 'arrowup': e.preventDefault(); setVolume(prev => Math.min(1, prev + 0.05)); break;
-        case 'arrowdown': e.preventDefault(); setVolume(prev => Math.max(0, prev - 0.05)); break;
+
+      // Используем e.code для независимости от раскладки
+      switch (e.code) {
+        case 'Space': 
+          e.preventDefault(); 
+          handleTogglePlay(); 
+          break;
+        case 'KeyM': 
+          e.preventDefault(); 
+          toggleMute(); 
+          break;
+        case 'ArrowLeft': 
+          navigateStation('prev'); 
+          break;
+        case 'ArrowRight': 
+          navigateStation('next'); 
+          break;
+        case 'ArrowUp': 
+          e.preventDefault(); 
+          setVolume(prev => Math.min(1, prev + 0.05)); 
+          break;
+        case 'ArrowDown': 
+          e.preventDefault(); 
+          setVolume(prev => Math.max(0, prev - 0.05)); 
+          break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleTogglePlay, navigateStation, setVolume]);
+  }, [handleTogglePlay, navigateStation, setVolume, toggleMute]);
 
   const handleDelete = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -461,7 +494,6 @@ export const App: React.FC = () => {
       const startArr = text.indexOf('[');
       const endArr = text.lastIndexOf(']');
 
-      // Находим границы JSON
       if (start !== -1 && end !== -1 && (startArr === -1 || start < startArr)) {
         jsonStr = text.substring(start, end + 1);
       } else if (startArr !== -1 && endArr !== -1) {
@@ -575,7 +607,6 @@ export const App: React.FC = () => {
         hapticNotification('warning');
       }
     } catch (e) {
-      // Fallback if clipboard access denied
       setShowManualImport(true);
     }
   };
