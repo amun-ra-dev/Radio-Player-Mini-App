@@ -19,18 +19,13 @@
   box-sizing: border-box;
 }
 
-/* Base transitions - exclude transform and layout properties that framer motion handles */
-body, h1, h2, p, span, button {
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease;
-}
-
 body {
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
-  touch-action: none;
+  touch-action: none; /* Важно для кастомных жестов */
   background-color: #000;
 }
 
@@ -54,21 +49,12 @@ input, textarea {
 }
 .ripple:active::after { transform: scale(0, 0); opacity: .1; transition: 0s; }
 
-/* Swiper Fixes */
-.swiper-slide {
-  user-select: none !important;
-  -webkit-user-select: none !important;
-}
-
-/* Fix for jerky reordering: Ensure items don't have CSS transitions on transform */
+/* Reorder Item Fixes - Отключаем CSS переходы во время перетаскивания для плавности */
 [data-framer-component-type="ReorderItem"] {
   transition: background-color 0.2s ease, border-color 0.2s ease !important;
-  transform: translateZ(0); /* Hardware acceleration */
   will-change: transform, opacity;
 }
 
-/* Prevent text selection in playlist */
 .playlist-container {
-  -webkit-user-select: none;
-  user-select: none;
+  overscroll-behavior-y: contain;
 }
