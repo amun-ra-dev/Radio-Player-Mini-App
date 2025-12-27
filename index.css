@@ -32,3 +32,41 @@ body {
 .dark ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Stylish Scrollbar for Playlist */
+.stylish-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+}
+
+.dark .stylish-scroll {
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+/* Webkit-based browsers (Chrome, Safari, Telegram, Android Webview) */
+.stylish-scroll::-webkit-scrollbar {
+  display: block !important; /* Overriding global display:none */
+  width: 4px !important;
+}
+
+.stylish-scroll::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.stylish-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.1) !important;
+  border-radius: 20px !important;
+  transition: background-color 0.3s ease;
+}
+
+.dark .stylish-scroll::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.stylish-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark .stylish-scroll::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+}
