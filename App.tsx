@@ -1,5 +1,6 @@
 
-// Build: 2.6.4
+// Build: 2.6.5
+// - Feature: Parallax effect removed per user request.
 // - Fix: Aggressive focus removal on Star and other buttons via onFocus event.
 // - UI: Global focus reset in index.html.
 // - Feature: Symmetric swipe transitions.
@@ -15,14 +16,13 @@ import { Station, PlayerStatus, ExportSchemaV2 } from './types.ts';
 import { DEFAULT_STATIONS, Icons } from './constants.tsx';
 import { useTelegram } from './hooks/useTelegram.ts';
 import { useAudio } from './hooks/useAudio.ts';
-import { useGyroscope } from './hooks/useGyroscope.ts';
 import { RippleButton } from './components/UI/RippleButton.tsx';
 import { Logo } from './components/UI/Logo.tsx';
 
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.6.4";
+const APP_VERSION = "2.6.5";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -38,8 +38,7 @@ const StationCover: React.FC<{
   station: Station | null | undefined; 
   className?: string; 
   showTags?: boolean; 
-  parallax?: { x: number, y: number };
-}> = ({ station, className = "", showTags = true, parallax = { x: 0, y: 0 } }) => {
+}> = ({ station, className = "", showTags = true }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
@@ -92,9 +91,6 @@ const StationCover: React.FC<{
     );
   }
 
-  const internalX = (parallax.x * 8);
-  const internalY = parallax.y * 8;
-
   return (
     <div className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}>
       {renderTags()}
@@ -111,14 +107,10 @@ const StationCover: React.FC<{
           initial={{ opacity: 0 }}
           animate={{ 
             opacity: isLoaded ? 1 : 0,
-            x: internalX,
-            y: internalY,
-            scale: 1.15 
+            scale: 1.05 
           }}
           transition={{ 
-            opacity: { duration: 0.3 }, 
-            x: { type: 'spring', stiffness: 80, damping: 30, restDelta: 0.01 }, 
-            y: { type: 'spring', stiffness: 80, damping: 30, restDelta: 0.01 } 
+            opacity: { duration: 0.3 }
           }}
           onLoadedData={() => setIsLoaded(true)}
           onError={() => setHasError(true)}
@@ -133,14 +125,10 @@ const StationCover: React.FC<{
           initial={{ opacity: 0 }}
           animate={{ 
             opacity: isLoaded ? 1 : 0,
-            x: internalX,
-            y: internalY,
-            scale: 1.15 
+            scale: 1.05 
           }}
           transition={{ 
-            opacity: { duration: 0.3 }, 
-            x: { type: 'spring', stiffness: 80, damping: 30, restDelta: 0.01 }, 
-            y: { type: 'spring', stiffness: 80, damping: 30, restDelta: 0.01 } 
+            opacity: { duration: 0.3 }
           }}
           onLoad={() => setIsLoaded(true)}
           onError={() => setHasError(true)}
@@ -224,7 +212,6 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
 
 export const App: React.FC = () => {
   const { hapticImpact, hapticNotification, setBackButton, isMobile, themeParams } = useTelegram();
-  const orientation = useGyroscope(isMobile);
 
   const [stations, setStations] = useState<Station[]>(() => {
     const saved = localStorage.getItem('radio_stations');
@@ -702,6 +689,8 @@ export const App: React.FC = () => {
             coverUrl: impCover || nextStationsList[existingIdx].coverUrl,
             tags: impTags.length > 0 ? impTags : nextStationsList[existingIdx].tags
           };
+          // Fix: Correctly access the station ID from nextStationsList instead of nextFavoritesList.
+          // The previous code was trying to access .id on a string in nextFavoritesList.
           if (impFav && !nextFavoritesList.includes(nextStationsList[existingIdx].id)) {
             nextFavoritesList.push(nextStationsList[existingIdx].id);
           }
@@ -940,7 +929,6 @@ export const App: React.FC = () => {
                     <StationCover 
                       station={station} 
                       className="w-full h-full" 
-                      parallax={activeStationId === station.id ? orientation : { x: 0, y: 0 }} 
                     />
                     <div className="absolute bottom-6 right-6 z-30" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
                       <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105 shadow-lg shadow-amber-500/30' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
