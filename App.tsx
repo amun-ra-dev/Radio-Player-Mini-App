@@ -1,8 +1,8 @@
 
-// Build: 2.5.4
-// - Fix: Audio stream no longer restarts when exiting/entering "Favorites Only" mode.
-// - UX: Swiper now correctly translates the current station's position between filtered and full lists.
-// - Feature: Reliable persistence for the last active and playing station.
+// Build: 2.5.5
+// - Feature: Immediate restoration of the last active station using initialSlide.
+// - Fix: Prevented activeStationId reset during app initialization.
+// - UX: Seamless transition between sessions with reliable state persistence.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.4";
+const APP_VERSION = "2.5.5";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -279,11 +279,12 @@ export const App: React.FC = () => {
   }, [activeStationId, playingStationId, status, activeStation, hapticImpact, play, stop, favorites]);
 
   useEffect(() => {
+    if (!stations.length) return; // Wait for stations to load from localStorage
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
     if (!activeStationId || !displayedStations.some(s => s.id === activeStationId)) { 
         setActiveStationId(displayedStations[0].id); 
     }
-  }, [displayedStations, activeStationId]);
+  }, [displayedStations, activeStationId, stations.length]);
 
   useEffect(() => {
     if (swiperInstance && activeStationId && displayedStations.length > 0) {
@@ -407,7 +408,6 @@ export const App: React.FC = () => {
     const prevActiveId = activeStationId;
     let targetStationId = prevActiveId;
     
-    // CRITICAL: Block slide change logic during mode toggle to prevent stream restart
     isReorderingRef.current = true;
     
     setOnlyFavoritesMode(nextMode); 
@@ -436,7 +436,6 @@ export const App: React.FC = () => {
       }
     }
     
-    // Calculate and jump to the correct index in the next tick to prevent the Swiper from resetting and triggering 'onSlideChange'
     setTimeout(() => {
       if (swiperInstance) {
         const newList = nextMode ? stations.filter(s => favorites.includes(s.id)) : stations;
@@ -445,7 +444,6 @@ export const App: React.FC = () => {
           swiperInstance.slideToLoop(newIdx, 0);
         }
       }
-      // Release lock after enough time for Swiper to adjust internal state
       setTimeout(() => { isReorderingRef.current = false; }, 300);
     }, 0);
 
@@ -775,6 +773,12 @@ export const App: React.FC = () => {
   const nativeBgColor = themeParams?.bg_color || '#ffffff';
   const nativeTextColor = themeParams?.text_color || '#222222';
 
+  const initialSlideIndex = useMemo(() => {
+    if (!displayedStations.length || !activeStationId) return 0;
+    const idx = displayedStations.findIndex(s => s.id === activeStationId);
+    return idx === -1 ? 0 : idx;
+  }, [displayedStations, activeStationId]);
+
   return (
     <div className="flex flex-col overflow-hidden transition-colors duration-500" style={{ height: 'var(--tg-viewport-height, 100vh)', color: nativeTextColor, backgroundColor: nativeBgColor }}>
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20 dark:opacity-40 bg-[radial-gradient(circle_at_center,_#3b82f6_0%,_transparent_70%)] dark:bg-[radial-gradient(circle_at_center,_#1d4ed8_0%,_transparent_80%)]" />
@@ -801,9 +805,10 @@ export const App: React.FC = () => {
         <div className="relative w-[340px] aspect-square shrink-0 transition-all duration-500">
           {displayedStations.length > 0 ? (
             <Swiper
+              key={`swiper-${displayedStations.length}-${onlyFavoritesMode}`}
+              initialSlide={initialSlideIndex}
               onSwiper={setSwiperInstance}
               onSlideChange={(swiper) => {
-                // LOCK CHECK: Skip internal logic if we are in a transition (mode toggle or reorder)
                 if (isReorderingRef.current) return;
                 
                 const targetStation = displayedStations[swiper.realIndex];
@@ -813,7 +818,6 @@ export const App: React.FC = () => {
                     if (isNewStation) {
                         setActiveStationId(targetStation.id);
                         if (status === 'playing' || status === 'loading') {
-                            // Only restart audio if the target station ID is different from what's playing
                             if (targetStation.id !== playingStationId) {
                                 setPlayingStationId(targetStation.id);
                                 if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
