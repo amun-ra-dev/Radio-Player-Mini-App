@@ -1,7 +1,7 @@
 
-// Build: 2.6.2
-// - Fix: Removed unwanted focus rings on header buttons after interaction.
-// - UI: Cleaned up focus states for keyboard-friendly experience.
+// Build: 2.6.3
+// - Fix: Force blur on all header buttons and controls to prevent keyboard-triggered focus rings.
+// - UI: Enhanced RippleButton with automatic focus removal.
 // - Feature: Symmetric swipe transitions.
 // - Feature: Video covers support (.mp4, .mov) with looping.
 
@@ -22,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.6.2";
+const APP_VERSION = "2.6.3";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -214,7 +214,6 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
           {isFavorite ? <Icons.Star /> : <Icons.StarOutline />}
         </RippleButton>
         <RippleButton onClick={onEdit} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors" onMouseEnter={(e) => (e.currentTarget.style.color = accentColor)} onMouseLeave={(e) => (e.currentTarget.style.color = '')}><Icons.Settings /></RippleButton>
-        {/* Fix: use destructiveColor prop instead of undefined nativeDestructiveColor */}
         <RippleButton onClick={onDelete} className="p-2.5 rounded-xl transition-all" style={{ color: 'var(--tg-theme-subtitle-text-color, #999)' }} onMouseEnter={(e) => (e.currentTarget.style.color = destructiveColor)} onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--tg-theme-subtitle-text-color, #999)')}>
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
         </RippleButton>
@@ -703,8 +702,8 @@ export const App: React.FC = () => {
             coverUrl: impCover || nextStationsList[existingIdx].coverUrl,
             tags: impTags.length > 0 ? impTags : nextStationsList[existingIdx].tags
           };
-          if (impFav && !nextFavoritesList.includes(nextFavoritesList[existingIdx].id)) {
-            nextFavoritesList.push(nextFavoritesList[existingIdx].id);
+          if (impFav && !nextFavoritesList.includes(nextStationsList[existingIdx].id)) {
+            nextFavoritesList.push(nextStationsList[existingIdx].id);
           }
           updatedCount++;
         } else {
@@ -859,7 +858,11 @@ export const App: React.FC = () => {
           <motion.button 
             layout 
             disabled={!hasStations} 
-            onClick={() => setShowSleepTimerModal(true)} 
+            onPointerDown={(e) => e.currentTarget.blur()}
+            onClick={(e) => {
+              e.currentTarget.blur();
+              setShowSleepTimerModal(true);
+            }}
             className={`ripple h-[38px] rounded-full relative flex items-center justify-center transition-all focus:outline-none focus:ring-0 focus-visible:ring-0 ${!hasStations ? 'w-[38px] opacity-20 pointer-events-none' : (sleepTimerEndDate ? 'text-white px-4' : 'w-[38px] text-gray-400 dark:text-gray-500')}`} 
             style={{ backgroundColor: sleepTimerEndDate ? nativeAccentColor : undefined }} 
             transition={{ type: 'spring', stiffness: 500, damping: 30 }}
@@ -1039,8 +1042,22 @@ export const App: React.FC = () => {
               <div className="w-full flex flex-col items-center pt-6 pb-4 shrink-0 touch-none cursor-grab active:cursor-grabbing" onPointerDown={(e) => dragControls.start(e)}><div className="w-20 h-1.5 bg-black/10 dark:bg-white/10 rounded-full mb-3" /></div>
               <div className="px-6 pb-4">
                 <div className="flex items-center bg-black/5 dark:bg-white/[0.04] rounded-[1.25rem] p-1.5 backdrop-blur-xl border border-white/5 transition-colors">
-                  <button onClick={() => setPlaylistFilter('all')} className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all focus:outline-none focus:ring-0 ${playlistFilter === 'all' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} style={{ color: playlistFilter === 'all' ? nativeAccentColor : undefined }}>Все станции</button>
-                  <button onClick={() => setPlaylistFilter('favorites')} className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all focus:outline-none focus:ring-0 ${playlistFilter === 'favorites' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} style={{ color: playlistFilter === 'favorites' ? nativeAccentColor : undefined }}>Избранное</button>
+                  <button 
+                    onPointerDown={(e) => e.currentTarget.blur()}
+                    onClick={(e) => { e.currentTarget.blur(); setPlaylistFilter('all'); }} 
+                    className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all focus:outline-none focus:ring-0 ${playlistFilter === 'all' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} 
+                    style={{ color: playlistFilter === 'all' ? nativeAccentColor : undefined }}
+                  >
+                    Все станции
+                  </button>
+                  <button 
+                    onPointerDown={(e) => e.currentTarget.blur()}
+                    onClick={(e) => { e.currentTarget.blur(); setPlaylistFilter('favorites'); }} 
+                    className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all focus:outline-none focus:ring-0 ${playlistFilter === 'favorites' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} 
+                    style={{ color: playlistFilter === 'favorites' ? nativeAccentColor : undefined }}
+                  >
+                    Избранное
+                  </button>
                 </div>
               </div>
               <div ref={listRef} className="flex-1 overflow-y-auto px-6 flex flex-col overscroll-contain" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
@@ -1146,7 +1163,14 @@ export const App: React.FC = () => {
         {snackbar && (
           <motion.div initial={{ opacity: 0, y: 60, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 60, scale: 0.9 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-black/95 dark:bg-white/10 backdrop-blur-[70px] text-white dark:text-white px-8 py-5 rounded-[2.5rem] font-bold flex items-center justify-between shadow-2xl border border-white/10">
             <span className="truncate pr-4 tracking-tight text-sm">{snackbar}</span>
-            <button onClick={() => setSnackbar(null)} className="shrink-0 font-black uppercase text-xs tracking-widest ml-4 focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ color: nativeAccentColor }}>OK</button>
+            <button 
+              onPointerDown={(e) => e.currentTarget.blur()}
+              onClick={(e) => { e.currentTarget.blur(); setSnackbar(null); }} 
+              className="shrink-0 font-black uppercase text-xs tracking-widest ml-4 focus:outline-none focus:ring-0 focus-visible:ring-0" 
+              style={{ color: nativeAccentColor }}
+            >
+              OK
+            </button>
           </motion.div>
         )}
       </AnimatePresence>
