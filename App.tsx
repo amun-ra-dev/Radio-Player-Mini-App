@@ -1,8 +1,8 @@
 
-// Build: 2.5.3
-// - Fix: Prevented stream restart when toggling "Favorites Only" mode off.
-// - UX: Implemented transition lock to stabilize Swiper during playlist updates.
-// - UI: Clean aesthetics maintained without redundant icons in station names.
+// Build: 2.5.4
+// - Fix: Audio stream no longer restarts when exiting/entering "Favorites Only" mode.
+// - UX: Swiper now correctly translates the current station's position between filtered and full lists.
+// - Feature: Reliable persistence for the last active and playing station.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.3";
+const APP_VERSION = "2.5.4";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -356,7 +356,7 @@ export const App: React.FC = () => {
         if (stationAtIdx) setActiveStationId(stationAtIdx.id);
     }
     hapticImpact('light');
-    setTimeout(() => { isReorderingRef.current = false; }, 100);
+    setTimeout(() => { isReorderingRef.current = false; }, 150);
   };
 
   const toggleFavorite = useCallback((id: string, e?: React.MouseEvent) => {
@@ -404,6 +404,8 @@ export const App: React.FC = () => {
     }
     
     const nextMode = !onlyFavoritesMode;
+    const prevActiveId = activeStationId;
+    let targetStationId = prevActiveId;
     
     // CRITICAL: Block slide change logic during mode toggle to prevent stream restart
     isReorderingRef.current = true;
@@ -413,7 +415,7 @@ export const App: React.FC = () => {
     setSnackbar(nextMode ? 'Режим избранного: ВКЛ' : 'Режим избранного: ВЫКЛ');
 
     if (nextMode) {
-      const currentIsFav = favorites.includes(activeStationId);
+      const currentIsFav = favorites.includes(prevActiveId);
       if (!currentIsFav) {
         const favList = stations.filter(s => favorites.includes(s.id));
         if (favList.length > 0) {
@@ -422,22 +424,32 @@ export const App: React.FC = () => {
             : favList[0].id;
           
           const fallbackStation = favList.find(s => s.id === fallbackId) || favList[0];
+          targetStationId = fallbackStation.id;
           
-          setActiveStationId(fallbackStation.id);
+          setActiveStationId(targetStationId);
           if (status === 'playing' || status === 'loading') {
-            setPlayingStationId(fallbackStation.id);
-            setLastPlayedFavoriteId(fallbackStation.id);
+            setPlayingStationId(targetStationId);
+            setLastPlayedFavoriteId(targetStationId);
             play(fallbackStation.streamUrl);
           }
         }
       }
     }
     
-    // Release lock after enough time for Swiper to adjust internal state
+    // Calculate and jump to the correct index in the next tick to prevent the Swiper from resetting and triggering 'onSlideChange'
     setTimeout(() => {
-      isReorderingRef.current = false;
-    }, 300);
-  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, stations, favorites, activeStationId, lastPlayedFavoriteId, status, play]);
+      if (swiperInstance) {
+        const newList = nextMode ? stations.filter(s => favorites.includes(s.id)) : stations;
+        const newIdx = newList.findIndex(s => s.id === targetStationId);
+        if (newIdx !== -1) {
+          swiperInstance.slideToLoop(newIdx, 0);
+        }
+      }
+      // Release lock after enough time for Swiper to adjust internal state
+      setTimeout(() => { isReorderingRef.current = false; }, 300);
+    }, 0);
+
+  }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, stations, favorites, activeStationId, lastPlayedFavoriteId, status, play, swiperInstance]);
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => {
     if (!swiperInstance) return;
