@@ -1,9 +1,9 @@
 
-// Build: 2.5.7
-// - Feature: Added "Cancel Timer" button in the Sleep Timer modal when active.
-// - Feature: Volume level is now persisted across app restarts.
-// - UX: Improved layout and feedback for sleep timer management.
-// - Fix: Reliable state restoration on restart with proper initial slide handling.
+// Build: 2.5.8
+// - Feature: Video covers support (.mp4, .mov) with looping.
+// - Feature: Enhanced support for animated SVG and WebP.
+// - Feature: Volume level and last station persistence.
+// - Fix: Cancel button for sleep timer.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.7";
+const APP_VERSION = "2.5.8";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -37,16 +37,31 @@ const MiniEqualizer: React.FC = () => (
 const StationCover: React.FC<{ station: Station | null | undefined; className?: string; showTags?: boolean; parallax?: { x: number, y: number } }> = ({ station, className = "", showTags = true, parallax = { x: 0, y: 0 } }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
-  const imgRef = useRef<HTMLImageElement>(null);
+  const mediaRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
+
+  const isVideo = useMemo(() => {
+    const url = station?.coverUrl?.toLowerCase() || '';
+    return url.endsWith('.mp4') || url.endsWith('.mov');
+  }, [station?.coverUrl]);
 
   useEffect(() => {
     setHasError(false);
     setIsLoaded(false);
+    
     if (!station?.coverUrl) return;
-    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth > 0) {
-      setIsLoaded(true);
+
+    if (!isVideo) {
+      const img = mediaRef.current as HTMLImageElement;
+      if (img && img.complete && img.naturalWidth > 0) {
+        setIsLoaded(true);
+      }
+    } else {
+      const video = mediaRef.current as HTMLVideoElement;
+      if (video && video.readyState >= 3) {
+        setIsLoaded(true);
+      }
     }
-  }, [station?.id, station?.coverUrl]);
+  }, [station?.id, station?.coverUrl, isVideo]);
 
   const renderTags = () => {
     if (!showTags || !station?.tags || station.tags.length === 0) return null;
@@ -75,23 +90,48 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
   return (
     <div className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}>
       {renderTags()}
-      <motion.img
-        ref={imgRef}
-        key={`${station.id}-${station.coverUrl}`}
-        initial={{ opacity: 0 }}
-        animate={{ 
-          opacity: isLoaded ? 1 : 0,
-          x: parallax.x * 8,
-          y: parallax.y * 8,
-          scale: 1.1 
-        }}
-        transition={{ opacity: { duration: 0.3 }, x: { type: 'spring', stiffness: 50, damping: 20 }, y: { type: 'spring', stiffness: 50, damping: 20 } }}
-        src={station.coverUrl}
-        alt={station.name}
-        onLoad={() => setIsLoaded(true)}
-        onError={() => setHasError(true)}
-        className="w-full h-full object-cover select-none pointer-events-none"
-      />
+      
+      {isVideo ? (
+        <motion.video
+          ref={mediaRef as any}
+          key={`vid-${station.id}-${station.coverUrl}`}
+          src={station.coverUrl}
+          autoPlay
+          muted
+          loop
+          playsInline
+          initial={{ opacity: 0 }}
+          animate={{ 
+            opacity: isLoaded ? 1 : 0,
+            x: parallax.x * 8,
+            y: parallax.y * 8,
+            scale: 1.1 
+          }}
+          transition={{ opacity: { duration: 0.3 }, x: { type: 'spring', stiffness: 50, damping: 20 }, y: { type: 'spring', stiffness: 50, damping: 20 } }}
+          onLoadedData={() => setIsLoaded(true)}
+          onError={() => setHasError(true)}
+          className="w-full h-full object-cover select-none pointer-events-none"
+        />
+      ) : (
+        <motion.img
+          ref={mediaRef as any}
+          key={`img-${station.id}-${station.coverUrl}`}
+          src={station.coverUrl}
+          alt={station.name}
+          initial={{ opacity: 0 }}
+          animate={{ 
+            opacity: isLoaded ? 1 : 0,
+            x: parallax.x * 8,
+            y: parallax.y * 8,
+            scale: 1.1 
+          }}
+          transition={{ opacity: { duration: 0.3 }, x: { type: 'spring', stiffness: 50, damping: 20 }, y: { type: 'spring', stiffness: 50, damping: 20 } }}
+          onLoad={() => setIsLoaded(true)}
+          onError={() => setHasError(true)}
+          className="w-full h-full object-cover select-none pointer-events-none"
+        />
+      )}
+
       {!isLoaded && !hasError && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-200 dark:bg-[#1a1a1a] z-10">
           <div className="w-8 h-8 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
@@ -210,7 +250,6 @@ export const App: React.FC = () => {
 
   const sleepTimerTimeoutRef = useRef<number | null>(null);
   const originalVolumeRef = useRef<number>(0.5);
-  const lastNonZeroVolumeRef = useRef<number>(0.5);
   const isFadingOutRef = useRef<boolean>(false);
   const dragControls = useDragControls();
   const listRef = useRef<HTMLDivElement>(null);
@@ -280,7 +319,7 @@ export const App: React.FC = () => {
   }, [activeStationId, playingStationId, status, activeStation, hapticImpact, play, stop, favorites]);
 
   useEffect(() => {
-    if (!stations.length) return; // Wait for stations to load from localStorage
+    if (!stations.length) return;
     if (!displayedStations.length) { if (activeStationId) setActiveStationId(''); return; }
     if (!activeStationId || !displayedStations.some(s => s.id === activeStationId)) { 
         setActiveStationId(displayedStations[0].id); 
@@ -482,12 +521,11 @@ export const App: React.FC = () => {
 
   const toggleMute = useCallback(() => {
     if (volume > 0) {
-      lastNonZeroVolumeRef.current = volume;
       setVolume(0);
       setSnackbar('Звук выключен');
       hapticImpact('soft');
     } else {
-      setVolume(lastNonZeroVolumeRef.current || 0.5);
+      setVolume(0.5);
       setSnackbar('Звук включен');
       hapticImpact('rigid');
     }
