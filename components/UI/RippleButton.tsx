@@ -13,11 +13,18 @@ export const RippleButton: React.FC<RippleButtonProps> = ({ children, className 
     if (props.onPointerDown) props.onPointerDown(e);
   };
 
+  const handleFocus = (e: React.FocusEvent<HTMLButtonElement>) => {
+    // Aggressively remove focus to ensure no system borders appear
+    e.currentTarget.blur();
+    if (props.onFocus) props.onFocus(e);
+  };
+
   return (
     <button
       {...props}
       onPointerDown={handlePointerDown}
-      className={`ripple active:opacity-80 transition-opacity focus:outline-none focus:ring-0 focus-visible:outline-none ${className}`}
+      onFocus={handleFocus}
+      className={`ripple active:opacity-80 transition-opacity outline-none focus:outline-none focus:ring-0 focus-visible:outline-none ${className}`}
     >
       {children}
     </button>

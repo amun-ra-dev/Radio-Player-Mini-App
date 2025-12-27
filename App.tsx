@@ -1,7 +1,7 @@
 
-// Build: 2.6.3
-// - Fix: Force blur on all header buttons and controls to prevent keyboard-triggered focus rings.
-// - UI: Enhanced RippleButton with automatic focus removal.
+// Build: 2.6.4
+// - Fix: Aggressive focus removal on Star and other buttons via onFocus event.
+// - UI: Global focus reset in index.html.
 // - Feature: Symmetric swipe transitions.
 // - Feature: Video covers support (.mp4, .mov) with looping.
 
@@ -22,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.6.3";
+const APP_VERSION = "2.6.4";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -859,6 +859,7 @@ export const App: React.FC = () => {
             layout 
             disabled={!hasStations} 
             onPointerDown={(e) => e.currentTarget.blur()}
+            onFocus={(e) => e.currentTarget.blur()}
             onClick={(e) => {
               e.currentTarget.blur();
               setShowSleepTimerModal(true);
@@ -1044,6 +1045,7 @@ export const App: React.FC = () => {
                 <div className="flex items-center bg-black/5 dark:bg-white/[0.04] rounded-[1.25rem] p-1.5 backdrop-blur-xl border border-white/5 transition-colors">
                   <button 
                     onPointerDown={(e) => e.currentTarget.blur()}
+                    onFocus={(e) => e.currentTarget.blur()}
                     onClick={(e) => { e.currentTarget.blur(); setPlaylistFilter('all'); }} 
                     className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all focus:outline-none focus:ring-0 ${playlistFilter === 'all' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} 
                     style={{ color: playlistFilter === 'all' ? nativeAccentColor : undefined }}
@@ -1052,6 +1054,7 @@ export const App: React.FC = () => {
                   </button>
                   <button 
                     onPointerDown={(e) => e.currentTarget.blur()}
+                    onFocus={(e) => e.currentTarget.blur()}
                     onClick={(e) => { e.currentTarget.blur(); setPlaylistFilter('favorites'); }} 
                     className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all focus:outline-none focus:ring-0 ${playlistFilter === 'favorites' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} 
                     style={{ color: playlistFilter === 'favorites' ? nativeAccentColor : undefined }}
@@ -1165,6 +1168,7 @@ export const App: React.FC = () => {
             <span className="truncate pr-4 tracking-tight text-sm">{snackbar}</span>
             <button 
               onPointerDown={(e) => e.currentTarget.blur()}
+              onFocus={(e) => e.currentTarget.blur()}
               onClick={(e) => { e.currentTarget.blur(); setSnackbar(null); }} 
               className="shrink-0 font-black uppercase text-xs tracking-widest ml-4 focus:outline-none focus:ring-0 focus-visible:ring-0" 
               style={{ color: nativeAccentColor }}
