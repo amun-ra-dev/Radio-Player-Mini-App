@@ -16,11 +16,12 @@
   -webkit-user-select: none !important;
   -webkit-touch-callout: none !important;
   scrollbar-width: none; /* Firefox */
+  box-sizing: border-box;
 }
 
-/* Apply transitions selectively to avoid interfering with drag transforms */
-body, div, h1, h2, p, span, button, input {
-  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease, filter 0.3s ease;
+/* Base transitions - exclude transform and layout properties that framer motion handles */
+body, h1, h2, p, span, button {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease;
 }
 
 body {
@@ -59,7 +60,15 @@ input, textarea {
   -webkit-user-select: none !important;
 }
 
-/* Reorder Item Fixes - Disable transitions during drag */
+/* Fix for jerky reordering: Ensure items don't have CSS transitions on transform */
 [data-framer-component-type="ReorderItem"] {
   transition: background-color 0.2s ease, border-color 0.2s ease !important;
+  transform: translateZ(0); /* Hardware acceleration */
+  will-change: transform, opacity;
+}
+
+/* Prevent text selection in playlist */
+.playlist-container {
+  -webkit-user-select: none;
+  user-select: none;
 }

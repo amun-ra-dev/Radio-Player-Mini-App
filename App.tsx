@@ -1,12 +1,11 @@
 
-// Build: 2.9.7
-// - Feature: Horizontal "Swipe to Back" (Left-to-Right) to collapse the expanded playlist.
-// - UX: Refined Reordering smoothness with optimized spring physics and layout management.
-// - UI: Controls hide automatically when playlist is expanded.
-// - Logic: Improved gesture isolation between scroll, drag, and reorder.
+// Build: 2.9.8
+// - Feature: Integrated Playlist (Scroll + Reorder + Play/Stop).
+// - UX: Long-press to Reorder, Tap to Play.
+// - Gesture: Swipe Right (X-axis) to collapse playlist.
+// - Fix: Jerky list items by optimizing physics and disabling CSS transforms.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-/* Removed usePanGesture as it is not an exported member of framer-motion */
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCreative, Keyboard } from 'swiper/modules';
@@ -344,23 +343,27 @@ export const App: React.FC = () => {
         </motion.div>
       </main>
 
-      {/* BOTTOM SHEET */}
+      {/* BOTTOM SHEET - Refined for Scroll + Drag */}
       <motion.div 
         drag="y"
         dragControls={sheetDragControls}
         dragListener={false}
         dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0.02, bottom: 0.4 }}
+        dragElastic={{ top: 0.05, bottom: 0.4 }}
         onDragEnd={(_, info) => {
             if (info.offset.y < -50) setIsSheetExpanded(true);
             else if (info.offset.y > 50) setIsSheetExpanded(false);
         }}
-        animate={{ height: isSheetExpanded ? '92vh' : '280px' }}
+        animate={{ height: isSheetExpanded ? '94vh' : '280px' }}
         transition={{ type: 'spring', damping: 30, stiffness: 200 }}
-        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-black/85 rounded-t-[3.5rem] border-t border-white/20 shadow-2xl backdrop-blur-[80px] flex flex-col overflow-hidden"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-black/90 rounded-t-[3.5rem] border-t border-white/10 shadow-2xl backdrop-blur-[80px] flex flex-col overflow-hidden"
       >
-        <div className="w-full flex flex-col items-center pt-4 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing" onPointerDown={(e) => sheetDragControls.start(e)}>
-          <div className="w-16 h-1.5 bg-black/10 dark:bg-white/10 rounded-full mb-6" />
+        {/* DRAG HANDLE (Controls) */}
+        <div 
+            className="w-full flex flex-col items-center pt-4 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing" 
+            onPointerDown={(e) => sheetDragControls.start(e)}
+        >
+          <div className="w-16 h-1 bg-black/10 dark:bg-white/10 rounded-full mb-6" />
           <div className="text-center w-full px-12 min-h-[50px] flex flex-col justify-center mb-4">
             <h2 className="text-xl font-black truncate tracking-tight">{activeStation?.name || 'Пусто'}</h2>
             <p className="text-[10px] opacity-40 uppercase tracking-[0.3em] font-black mt-1">{status === 'loading' ? 'Загрузка...' : (status === 'playing' ? 'В эфире' : 'Пауза')}</p>
@@ -384,22 +387,24 @@ export const App: React.FC = () => {
           </AnimatePresence>
         </div>
 
-        {/* PLAYLIST SECTION with Pan Gesture for Swipe-to-Back */}
+        {/* PLAYLIST AREA with integrated Pan Gesture for Swipe-to-Back */}
         <motion.div 
             onPan={(e, info) => {
                 if (!isSheetExpanded) return;
-                // Detect Left-to-Right swipe (x offset positive and greater than y offset)
+                // Swipe-to-back: Positive X velocity/offset
                 if (info.offset.x > 80 && Math.abs(info.offset.x) > Math.abs(info.offset.y)) {
                     setIsSheetExpanded(false);
                     hapticImpact('soft');
                 }
             }}
-            className="flex-1 overflow-hidden flex flex-col px-6 mt-4"
+            className="flex-1 overflow-hidden flex flex-col px-6 mt-4 playlist-container"
         >
             <div className="flex items-center bg-black/5 dark:bg-white/[0.04] rounded-2xl p-1 mb-4 shrink-0">
                 <button onClick={() => setPlaylistFilter('all')} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${playlistFilter === 'all' ? 'bg-white shadow-md' : 'opacity-40'}`} style={{ color: playlistFilter === 'all' ? nativeAccentColor : undefined }}>Все</button>
                 <button onClick={() => setPlaylistFilter('favorites')} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${playlistFilter === 'favorites' ? 'bg-white shadow-md' : 'opacity-40'}`} style={{ color: playlistFilter === 'favorites' ? nativeAccentColor : undefined }}>Избранное</button>
             </div>
+
+            {/* SCROLLABLE LIST - Handles reordering via long press */}
             <div className="flex-1 overflow-y-auto overscroll-contain pb-40 scroll-smooth">
                 {stationsInPlaylist.length > 0 ? (
                 <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-2">
@@ -481,7 +486,7 @@ export const App: React.FC = () => {
                     <form onSubmit={addOrUpdateStation} className="flex flex-col gap-3 overflow-y-auto pr-2">
                         <input placeholder="Название" value={editorState.name} onChange={(e) => setEditorState(prev => ({ ...prev, name: e.target.value }))} required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
                         <input placeholder="URL потока" value={editorState.streamUrl} onChange={(e) => setEditorState(prev => ({ ...prev, streamUrl: e.target.value }))} type="url" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
-                        <input placeholder="URL обложки (опционально)" value={editorState.coverUrl} onChange={(e) => setEditorState(prev => ({ ...prev, coverUrl: e.target.value }))} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
+                        <input placeholder="URL обложки" value={editorState.coverUrl} onChange={(e) => setEditorState(prev => ({ ...prev, coverUrl: e.target.value }))} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
                         <input placeholder="Теги (через запятую)" value={editorState.tags} onChange={(e) => setEditorState(prev => ({ ...prev, tags: e.target.value }))} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
                         <div className="flex gap-4 mt-4 shrink-0">
                             <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-black/5 rounded-2xl font-black">Отмена</RippleButton>
@@ -519,7 +524,7 @@ const LongPressReorderItem: React.FC<{
             hapticImpact('heavy');
             setIsLongPressed(true);
             dragControls.start(e);
-        }, 400); 
+        }, 500); 
     };
 
     const handlePointerUp = () => {
@@ -527,8 +532,9 @@ const LongPressReorderItem: React.FC<{
         setIsLongPressed(false);
     };
 
-    const handlePointerMove = () => {
-        // Threshold check usually handled by pointerdown timeout
+    const handlePointerCancel = () => {
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        setIsLongPressed(false);
     };
 
     return (
@@ -538,20 +544,20 @@ const LongPressReorderItem: React.FC<{
             dragControls={dragControls}
             onPointerDown={handlePointerDown}
             onPointerUp={handlePointerUp}
-            onPointerMove={handlePointerMove}
+            onPointerCancel={handlePointerCancel}
             onDragStart={() => setIsDraggingActive(true)}
             onDragEnd={() => { setIsDraggingActive(false); setIsLongPressed(false); }}
             whileDrag={{ 
                 scale: 1.05, 
                 zIndex: 100, 
-                backgroundColor: 'rgba(255,255,255,0.08)',
-                backdropFilter: 'blur(25px)',
-                boxShadow: '0 25px 60px -15px rgba(0,0,0,0.5)',
+                backgroundColor: 'rgba(255,255,255,0.1)',
+                backdropFilter: 'blur(30px)',
+                boxShadow: '0 30px 60px -20px rgba(0,0,0,0.6)',
             }}
             layout
             animate={{ scale: isLongPressed || isDraggingActive ? 1.05 : 1 }}
-            transition={{ type: 'spring', damping: 20, stiffness: 400, mass: 0.7 }}
-            className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-colors duration-200 ${isActive ? 'bg-blue-50/50 dark:bg-white/5 border-blue-100/50' : 'bg-white dark:bg-white/0 border-transparent'} ${isDraggingActive ? 'opacity-90 grayscale-[0.1]' : ''} cursor-pointer touch-none`}
+            transition={{ type: 'spring', damping: 25, stiffness: 500, mass: 0.5 }}
+            className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-colors duration-200 ${isActive ? 'bg-blue-50/50 dark:bg-white/5 border-blue-100/30' : 'bg-white/50 dark:bg-white/0 border-transparent'} ${isDraggingActive ? 'opacity-90 grayscale-[0.05]' : ''} cursor-pointer touch-none select-none`}
             onClick={() => { if (!isDraggingActive && !isLongPressed) onSelect(); }}
         >
             <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-2xl bg-gray-100 dark:bg-[#222]">
