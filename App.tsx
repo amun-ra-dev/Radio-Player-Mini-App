@@ -1,8 +1,8 @@
 
-// Build: 2.5.5
-// - Feature: Immediate restoration of the last active station using initialSlide.
-// - Fix: Prevented activeStationId reset during app initialization.
-// - UX: Seamless transition between sessions with reliable state persistence.
+// Build: 2.5.6
+// - Feature: Added "Cancel Timer" button in the Sleep Timer modal when active.
+// - UX: Improved layout and feedback for sleep timer management.
+// - Fix: Reliable state restoration on restart with proper initial slide handling.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.5";
+const APP_VERSION = "2.5.6";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -307,7 +307,11 @@ export const App: React.FC = () => {
         setSnackbar('Таймер сна завершен'); hapticNotification('success');
       }, minutes * 60 * 1000);
       setSnackbar(`Таймер установлен на ${minutes} минут`); hapticImpact('light');
-    } else { setSleepTimerEndDate(null); setSnackbar('Таймер сна отключен'); }
+    } else { 
+      setSleepTimerEndDate(null); 
+      setSnackbar('Таймер сна отключен'); 
+      if (originalVolumeRef.current !== undefined) setVolume(originalVolumeRef.current);
+    }
     setShowSleepTimerModal(false);
   }, [stop, hapticNotification, hapticImpact, setVolume, volume]);
 
@@ -1065,7 +1069,21 @@ export const App: React.FC = () => {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={closeAllModals} />
             <motion.div initial={{ scale: 0.9, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 30 }} className="relative w-full max-sm bg-white/95 dark:bg-black/85 rounded-[3.5rem] p-10 border border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[70px]">
               <h3 className="text-2xl font-black mb-6 text-center tracking-tighter">Таймер сна</h3>
-              {timeRemaining && <div className="text-center font-black text-3xl mb-8 tabular-nums" style={{ color: nativeAccentColor }}>{timeRemaining}</div>}
+              
+              {sleepTimerEndDate && (
+                <div className="flex flex-col items-center mb-8">
+                  <div className="text-center font-black text-3xl mb-4 tabular-nums" style={{ color: nativeAccentColor }}>
+                    {timeRemaining || '...'}
+                  </div>
+                  <RippleButton 
+                    onClick={() => handleSetSleepTimer(0)} 
+                    className="py-2 px-6 rounded-full font-black text-[10px] uppercase tracking-widest transition-all bg-red-500/10 text-red-500 border border-red-500/20 active:scale-95"
+                  >
+                    Отключить таймер
+                  </RippleButton>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 mb-8">
                 {[15, 30, 45, 60].map(m => (
                   <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-4 bg-black/5 dark:bg-white/5 rounded-[1.5rem] font-black text-lg border dark:border-white/5 transition-colors" style={{ color: nativeAccentColor }}>{m}м</RippleButton>
