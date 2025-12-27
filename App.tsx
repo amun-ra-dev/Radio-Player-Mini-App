@@ -1,6 +1,7 @@
 
-// Build: 2.5.6
+// Build: 2.5.7
 // - Feature: Added "Cancel Timer" button in the Sleep Timer modal when active.
+// - Feature: Volume level is now persisted across app restarts.
 // - UX: Improved layout and feedback for sleep timer management.
 // - Fix: Reliable state restoration on restart with proper initial slide handling.
 
@@ -21,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.6";
+const APP_VERSION = "2.5.7";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">

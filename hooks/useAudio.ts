@@ -6,7 +6,10 @@ declare const Hls: any;
 
 export const useAudio = (streamUrl: string | null) => {
   const [status, setStatus] = useState<PlayerStatus>('idle');
-  const [volume, setVolume] = useState(0.5);
+  const [volume, setVolume] = useState(() => {
+    const saved = localStorage.getItem('radio_volume');
+    return saved !== null ? parseFloat(saved) : 0.5;
+  });
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const hlsRef = useRef<any>(null);
@@ -188,6 +191,13 @@ export const useAudio = (streamUrl: string | null) => {
   }, [handleAudioError]);
 
   useEffect(() => {
+    localStorage.setItem('radio_volume', volume.toString());
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
+
+  useEffect(() => {
     return () => {
       if (hlsRef.current) try { hlsRef.current.destroy(); } catch {}
       if (audioRef.current) {
@@ -196,12 +206,6 @@ export const useAudio = (streamUrl: string | null) => {
       }
     };
   }, []);
-
-  useEffect(() => {
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-    }
-  }, [volume]);
 
   return {
     status,
