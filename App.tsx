@@ -1,9 +1,9 @@
 
-// Build: 2.9.5
-// - Feature: Enhanced Station Editor with Live Preview & Tags.
-// - Feature: Custom Sleep Timer input.
-// - UX: Advanced "Long Press to Drag" with physical feedback.
-// - UI: Controls hide automatically to maximize playlist space.
+// Build: 2.9.6
+// - Fix: "Jerky" reordering by optimizing ReorderItem props and transitions.
+// - UX: Instant scale feedback on long-press before drag starts.
+// - UI: Controls hide automatically when playlist is expanded.
+// - Feature: Custom Sleep Timer and Enhanced Station Editor.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -20,8 +20,6 @@ import { Logo } from './components/UI/Logo.tsx';
 
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
-
-const APP_VERSION = "2.9.5";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -99,7 +97,6 @@ const StationCover: React.FC<{
 export const App: React.FC = () => {
   const { hapticImpact, hapticNotification, setBackButton, isMobile, themeParams } = useTelegram();
 
-  // STATIONS
   const [stations, setStations] = useState<Station[]>(() => {
     const saved = localStorage.getItem('radio_stations');
     if (saved) { try { const parsed = JSON.parse(saved); if (Array.isArray(parsed)) return parsed; } catch {} }
@@ -110,11 +107,9 @@ export const App: React.FC = () => {
     try { const parsed = saved ? JSON.parse(saved) : []; return Array.isArray(parsed) ? parsed : []; } catch { return []; }
   });
 
-  // UI STATE
   const [onlyFavoritesMode, setOnlyFavoritesMode] = useState<boolean>(() => localStorage.getItem('radio_only_favorites') === 'true');
   const [activeStationId, setActiveStationId] = useState<string>(() => localStorage.getItem('radio_last_active') || '');
   const [playingStationId, setPlayingStationId] = useState<string>(() => localStorage.getItem('radio_last_playing') || '');
-  
   const [playlistFilter, setPlaylistFilter] = useState<'all' | 'favorites'>('all');
   const [showEditor, setShowEditor] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -122,28 +117,18 @@ export const App: React.FC = () => {
   const [editingStation, setEditingStation] = useState<Station | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
 
-  // SLEEP TIMER
   const [showSleepTimerModal, setShowSleepTimerModal] = useState(false);
   const [sleepTimerEndDate, setSleepTimerEndDate] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   const [customTimerValue, setCustomTimerValue] = useState<string>('');
   const sleepTimerTimeoutRef = useRef<number | null>(null);
 
-  // BOTTOM SHEET
   const [isSheetExpanded, setIsSheetExpanded] = useState(false);
   const sheetDragControls = useDragControls();
-
-  // AUDIO & SWIPER
   const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(null);
   const isReorderingRef = useRef(false);
 
-  // EDITOR PREVIEW
-  const [editorState, setEditorState] = useState({
-    name: '',
-    streamUrl: '',
-    coverUrl: '',
-    tags: ''
-  });
+  const [editorState, setEditorState] = useState({ name: '', streamUrl: '', coverUrl: '', tags: '' });
 
   useEffect(() => {
     if (editingStation) {
@@ -230,10 +215,11 @@ export const App: React.FC = () => {
   const handleReorder = (reorderedItems: Station[]) => {
     isReorderingRef.current = true;
     const reorderedIds = new Set(reorderedItems.map(item => item.id));
+    // Correctly merge reordered subset back into the full stations list
     const newStations = [...reorderedItems, ...stations.filter(item => !reorderedIds.has(item.id))];
     setStations(newStations);
     hapticImpact('light');
-    setTimeout(() => { isReorderingRef.current = false; }, 150);
+    setTimeout(() => { isReorderingRef.current = false; }, 300);
   };
 
   const handleDemo = () => {
@@ -272,24 +258,10 @@ export const App: React.FC = () => {
   const addOrUpdateStation = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     const tags = editorState.tags.split(',').map(t => t.trim()).filter(Boolean);
-    
     if (editingStation) {
-      setStations(prev => prev.map(s => s.id === editingStation.id ? { 
-        ...s, 
-        name: editorState.name, 
-        streamUrl: editorState.streamUrl,
-        coverUrl: editorState.coverUrl,
-        tags
-      } : s));
+      setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name: editorState.name, streamUrl: editorState.streamUrl, coverUrl: editorState.coverUrl, tags } : s));
     } else {
-      setStations(prev => [...prev, { 
-        id: Date.now().toString(), 
-        name: editorState.name, 
-        streamUrl: editorState.streamUrl, 
-        coverUrl: editorState.coverUrl,
-        tags,
-        addedAt: Date.now() 
-      }]);
+      setStations(prev => [...prev, { id: Date.now().toString(), name: editorState.name, streamUrl: editorState.streamUrl, coverUrl: editorState.coverUrl, tags, addedAt: Date.now() }]);
     }
     closeAllModals();
   }, [editingStation, editorState, closeAllModals]);
@@ -314,17 +286,10 @@ export const App: React.FC = () => {
           <h1 className="text-2xl font-black tracking-tighter">Radio</h1>
         </div>
         <div className="flex items-center gap-2">
-          <RippleButton 
-            onClick={() => setOnlyFavoritesMode(!onlyFavoritesMode)} 
-            className={`w-[38px] h-[38px] flex items-center justify-center rounded-full transition-all ${onlyFavoritesMode ? 'bg-amber-100 text-amber-500' : 'text-gray-400'}`}
-          >
+          <RippleButton onClick={() => setOnlyFavoritesMode(!onlyFavoritesMode)} className={`w-[38px] h-[38px] flex items-center justify-center rounded-full transition-all ${onlyFavoritesMode ? 'bg-amber-100 text-amber-500' : 'text-gray-400'}`}>
             <Icons.Star />
           </RippleButton>
-          <RippleButton 
-            onClick={() => setShowSleepTimerModal(true)}
-            className={`h-[38px] rounded-full flex items-center justify-center transition-all ${sleepTimerEndDate ? 'bg-blue-600 text-white px-3 gap-2' : 'w-[38px] text-gray-400'}`}
-            style={{ backgroundColor: sleepTimerEndDate ? nativeAccentColor : undefined }}
-          >
+          <RippleButton onClick={() => setShowSleepTimerModal(true)} className={`h-[38px] rounded-full flex items-center justify-center transition-all ${sleepTimerEndDate ? 'bg-blue-600 text-white px-3 gap-2' : 'w-[38px] text-gray-400'}`} style={{ backgroundColor: sleepTimerEndDate ? nativeAccentColor : undefined }}>
             <Icons.Timer className="w-5 h-5" />
             {sleepTimerEndDate && <span className="text-[10px] font-black">{timeRemaining}</span>}
           </RippleButton>
@@ -334,12 +299,7 @@ export const App: React.FC = () => {
       {/* COVER SECTION */}
       <main className="flex-1 flex flex-col items-center justify-start pt-12 overflow-hidden relative z-10">
         <motion.div 
-            animate={{ 
-                scale: isSheetExpanded ? 0.75 : 1, 
-                y: isSheetExpanded ? -100 : 0, 
-                opacity: isSheetExpanded ? 0.2 : 1,
-                filter: isSheetExpanded ? 'blur(12px)' : 'blur(0px)'
-            }}
+            animate={{ scale: isSheetExpanded ? 0.75 : 1, y: isSheetExpanded ? -100 : 0, opacity: isSheetExpanded ? 0.2 : 1, filter: isSheetExpanded ? 'blur(12px)' : 'blur(0px)' }}
             transition={{ type: 'spring', damping: 30, stiffness: 150 }}
             className="relative w-[340px] aspect-square shrink-0"
         >
@@ -353,9 +313,7 @@ export const App: React.FC = () => {
                 const target = displayedStations[swiper.realIndex];
                 if (target) {
                     setActiveStationId(target.id);
-                    if (status === 'playing' || status === 'loading') {
-                        setPlayingStationId(target.id); play(target.streamUrl);
-                    }
+                    if (status === 'playing' || status === 'loading') { setPlayingStationId(target.id); play(target.streamUrl); }
                 }
                 hapticImpact('light');
               }}
@@ -401,39 +359,19 @@ export const App: React.FC = () => {
         transition={{ type: 'spring', damping: 30, stiffness: 200 }}
         className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-black/85 rounded-t-[3.5rem] border-t border-white/20 shadow-2xl backdrop-blur-[80px] flex flex-col overflow-hidden"
       >
-        {/* DRAG HANDLE & HEADER (Controls) */}
-        <div 
-            className="w-full flex flex-col items-center pt-4 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing"
-            onPointerDown={(e) => sheetDragControls.start(e)}
-        >
+        <div className="w-full flex flex-col items-center pt-4 pb-2 shrink-0 touch-none cursor-grab active:cursor-grabbing" onPointerDown={(e) => sheetDragControls.start(e)}>
           <div className="w-16 h-1.5 bg-black/10 dark:bg-white/10 rounded-full mb-6" />
-          
           <div className="text-center w-full px-12 min-h-[50px] flex flex-col justify-center mb-4">
             <h2 className="text-xl font-black truncate tracking-tight">{activeStation?.name || 'Пусто'}</h2>
-            <p className="text-[10px] opacity-40 uppercase tracking-[0.3em] font-black mt-1">
-                {status === 'loading' ? 'Загрузка...' : (status === 'playing' ? 'В эфире' : 'Пауза')}
-            </p>
+            <p className="text-[10px] opacity-40 uppercase tracking-[0.3em] font-black mt-1">{status === 'loading' ? 'Загрузка...' : (status === 'playing' ? 'В эфире' : 'Пауза')}</p>
           </div>
 
-          {/* DYNAMIC CONTROLS - Hide when expanded to save space */}
-          <AnimatePresence>
+          <AnimatePresence mode="wait">
             {!isSheetExpanded && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }} 
-                animate={{ opacity: 1, height: 'auto' }} 
-                exit={{ opacity: 0, height: 0 }}
-                className="w-full flex flex-col items-center overflow-hidden"
-              >
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="w-full flex flex-col items-center overflow-hidden">
                 <div className="w-full max-w-[280px] mb-6 px-4">
-                  <input 
-                      type="range" min="0" max="1" step="0.01" value={volume} 
-                      onChange={(e) => setVolume(parseFloat(e.target.value))} 
-                      className="w-full h-1.5 bg-black/5 dark:bg-white/10 rounded-full appearance-none cursor-pointer" 
-                      style={{ accentColor: nativeAccentColor }}
-                      disabled={!activeStation} 
-                  />
+                  <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="w-full h-1.5 bg-black/5 dark:bg-white/10 rounded-full appearance-none cursor-pointer" style={{ accentColor: nativeAccentColor }} disabled={!activeStation} />
                 </div>
-
                 <div className="w-full flex items-center justify-evenly px-6 pb-2">
                   <RippleButton onClick={() => navigateStation('prev')} className="p-4 opacity-30 hover:opacity-100 transition-opacity"><Icons.Prev /></RippleButton>
                   <RippleButton onClick={handleTogglePlay} className="w-20 h-20 rounded-full flex items-center justify-center text-white shadow-2xl active:scale-95 transition-transform" style={{ backgroundColor: activeStation ? nativeAccentColor : '#ccc' }} disabled={!activeStation}>
@@ -446,14 +384,12 @@ export const App: React.FC = () => {
           </AnimatePresence>
         </div>
 
-        {/* PLAYLIST SECTION */}
         <div className="flex-1 overflow-hidden flex flex-col px-6 mt-4">
             <div className="flex items-center bg-black/5 dark:bg-white/[0.04] rounded-2xl p-1 mb-4 shrink-0">
                 <button onClick={() => setPlaylistFilter('all')} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${playlistFilter === 'all' ? 'bg-white shadow-md' : 'opacity-40'}`} style={{ color: playlistFilter === 'all' ? nativeAccentColor : undefined }}>Все</button>
                 <button onClick={() => setPlaylistFilter('favorites')} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${playlistFilter === 'favorites' ? 'bg-white shadow-md' : 'opacity-40'}`} style={{ color: playlistFilter === 'favorites' ? nativeAccentColor : undefined }}>Избранное</button>
             </div>
-
-            <div className="flex-1 overflow-y-auto overscroll-contain pb-40">
+            <div className="flex-1 overflow-y-auto overscroll-contain pb-40 scroll-smooth">
                 {stationsInPlaylist.length > 0 ? (
                 <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-2">
                     {stationsInPlaylist.map(s => (
@@ -493,27 +429,10 @@ export const App: React.FC = () => {
                   <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black text-lg" style={{ color: nativeAccentColor }}>{m}м</RippleButton>
                 ))}
               </div>
-              
               <div className="flex gap-2 mb-6">
-                <input 
-                  type="number" 
-                  placeholder="Своё время (мин)" 
-                  value={customTimerValue}
-                  onChange={(e) => setCustomTimerValue(e.target.value)}
-                  className="flex-1 bg-black/5 dark:bg-white/5 rounded-2xl px-4 py-4 outline-none font-bold text-sm"
-                />
-                <RippleButton 
-                  onClick={() => {
-                    const mins = parseInt(customTimerValue);
-                    if (!isNaN(mins) && mins > 0) handleSetSleepTimer(mins);
-                  }}
-                  className="px-6 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm"
-                  style={{ backgroundColor: nativeAccentColor }}
-                >
-                  ОК
-                </RippleButton>
+                <input type="number" placeholder="Своё время (мин)" value={customTimerValue} onChange={(e) => setCustomTimerValue(e.target.value)} className="flex-1 bg-black/5 dark:bg-white/5 rounded-2xl px-4 py-4 outline-none font-bold text-sm" />
+                <RippleButton onClick={() => { const mins = parseInt(customTimerValue); if (!isNaN(mins) && mins > 0) handleSetSleepTimer(mins); }} className="px-6 py-4 bg-blue-600 text-white rounded-2xl font-black text-sm" style={{ backgroundColor: nativeAccentColor }}>ОК</RippleButton>
               </div>
-
               <RippleButton onClick={() => handleSetSleepTimer(0)} className="w-full py-4 bg-red-500/10 text-red-500 rounded-2xl font-black mb-2">Выключить</RippleButton>
               <RippleButton onClick={closeAllModals} className="w-full py-4 bg-black/5 rounded-2xl font-black">Закрыть</RippleButton>
             </motion.div>
@@ -539,7 +458,6 @@ export const App: React.FC = () => {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={closeAllModals} />
                 <motion.div initial={{ scale: 0.9, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 30 }} className="relative w-full max-w-sm bg-white dark:bg-black rounded-[3rem] p-8 shadow-2xl border border-white/10 flex flex-col gap-6 overflow-hidden max-h-[90vh]">
                     <h3 className="text-2xl font-black tracking-tighter">Редактор станции</h3>
-                    
                     <div className="flex items-center gap-4">
                       <div className="w-24 h-24 rounded-2xl overflow-hidden bg-black/5 border-2 border-black/5 shrink-0">
                         <StationCover station={{ name: editorState.name, coverUrl: editorState.coverUrl }} className="w-full h-full" />
@@ -549,33 +467,11 @@ export const App: React.FC = () => {
                         <p className="text-xs opacity-40 truncate">{editorState.streamUrl || 'URL потока'}</p>
                       </div>
                     </div>
-
                     <form onSubmit={addOrUpdateStation} className="flex flex-col gap-3 overflow-y-auto pr-2">
-                        <input 
-                          placeholder="Название" 
-                          value={editorState.name}
-                          onChange={(e) => setEditorState(prev => ({ ...prev, name: e.target.value }))}
-                          required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" 
-                        />
-                        <input 
-                          placeholder="URL потока" 
-                          value={editorState.streamUrl}
-                          onChange={(e) => setEditorState(prev => ({ ...prev, streamUrl: e.target.value }))}
-                          type="url" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" 
-                        />
-                        <input 
-                          placeholder="URL обложки (опционально)" 
-                          value={editorState.coverUrl}
-                          onChange={(e) => setEditorState(prev => ({ ...prev, coverUrl: e.target.value }))}
-                          className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" 
-                        />
-                        <input 
-                          placeholder="Теги (через запятую)" 
-                          value={editorState.tags}
-                          onChange={(e) => setEditorState(prev => ({ ...prev, tags: e.target.value }))}
-                          className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" 
-                        />
-                        
+                        <input placeholder="Название" value={editorState.name} onChange={(e) => setEditorState(prev => ({ ...prev, name: e.target.value }))} required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
+                        <input placeholder="URL потока" value={editorState.streamUrl} onChange={(e) => setEditorState(prev => ({ ...prev, streamUrl: e.target.value }))} type="url" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
+                        <input placeholder="URL обложки (опционально)" value={editorState.coverUrl} onChange={(e) => setEditorState(prev => ({ ...prev, coverUrl: e.target.value }))} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
+                        <input placeholder="Теги (через запятую)" value={editorState.tags} onChange={(e) => setEditorState(prev => ({ ...prev, tags: e.target.value }))} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-6 py-4 outline-none font-bold border border-transparent focus:border-blue-500" />
                         <div className="flex gap-4 mt-4 shrink-0">
                             <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-black/5 rounded-2xl font-black">Отмена</RippleButton>
                             <RippleButton type="submit" className="flex-1 py-4 text-white rounded-2xl font-black shadow-xl" style={{ backgroundColor: nativeAccentColor }}>Сохранить</RippleButton>
@@ -604,27 +500,26 @@ const LongPressReorderItem: React.FC<{
 }> = ({ station, isActive, isPlaying, isFavorite, status, accentColor, onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact }) => {
     const dragControls = useDragControls();
     const timerRef = useRef<number | null>(null);
+    const [isLongPressed, setIsLongPressed] = useState(false);
     const [isDraggingActive, setIsDraggingActive] = useState(false);
 
     const handlePointerDown = (e: React.PointerEvent) => {
         timerRef.current = window.setTimeout(() => {
             hapticImpact('heavy');
-            setIsDraggingActive(true);
+            setIsLongPressed(true);
             dragControls.start(e);
-        }, 450);
+        }, 400); // Trigger long press pick-up
     };
 
     const handlePointerUp = () => {
-        if (timerRef.current) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-        setIsDraggingActive(false);
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        setIsLongPressed(false);
     };
 
     const handlePointerMove = (e: React.PointerEvent) => {
-        if (timerRef.current && !isDraggingActive) {
-          // You could add a move threshold check here to cancel long press if they start scrolling
+        // Cancel pick up if user moves before long press initiates
+        if (timerRef.current && !isLongPressed) {
+          // Add threshold if needed
         }
     };
 
@@ -636,24 +531,19 @@ const LongPressReorderItem: React.FC<{
             onPointerDown={handlePointerDown}
             onPointerUp={handlePointerUp}
             onPointerMove={handlePointerMove}
-            onDragEnd={() => setIsDraggingActive(false)}
+            onDragStart={() => setIsDraggingActive(true)}
+            onDragEnd={() => { setIsDraggingActive(false); setIsLongPressed(false); }}
             whileDrag={{ 
-                scale: 1.05, 
+                scale: 1.04, 
                 zIndex: 100, 
-                backgroundColor: 'rgba(255,255,255,0.1)',
+                backgroundColor: 'rgba(255,255,255,0.05)',
                 backdropFilter: 'blur(20px)',
-                boxShadow: '0 20px 50px -10px rgba(0,0,0,0.3)',
-                borderColor: accentColor + '33'
+                boxShadow: '0 20px 40px -15px rgba(0,0,0,0.4)',
             }}
-            layout
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-all ${isActive ? 'bg-blue-50/50 dark:bg-white/5 border-blue-100/50' : 'bg-white dark:bg-white/0 border-transparent'} ${isDraggingActive ? 'opacity-90 grayscale-[0.2]' : ''} cursor-pointer touch-none`}
-            onClick={(e) => {
-              if (!isDraggingActive) onSelect();
-            }}
+            animate={{ scale: isLongPressed || isDraggingActive ? 1.04 : 1 }}
+            transition={{ type: 'spring', damping: 30, stiffness: 600, mass: 0.8 }}
+            className={`flex items-center gap-3 p-3 rounded-2xl border-2 ${isActive ? 'bg-blue-50/50 dark:bg-white/5 border-blue-100/50' : 'bg-white dark:bg-white/0 border-transparent'} ${isDraggingActive ? 'opacity-90' : ''} cursor-pointer touch-none`}
+            onClick={() => { if (!isDraggingActive && !isLongPressed) onSelect(); }}
         >
             <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-2xl bg-gray-100 dark:bg-[#222]">
                 <StationCover station={station} className="w-full h-full" />

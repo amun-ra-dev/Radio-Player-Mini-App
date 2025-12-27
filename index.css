@@ -11,12 +11,16 @@
 }
 
 * {
-  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   -webkit-tap-highlight-color: transparent;
   user-select: none !important;
   -webkit-user-select: none !important;
   -webkit-touch-callout: none !important;
   scrollbar-width: none; /* Firefox */
+}
+
+/* Apply transitions selectively to avoid interfering with drag transforms */
+body, div, h1, h2, p, span, button, input {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, opacity 0.3s ease, filter 0.3s ease;
 }
 
 body {
@@ -37,6 +41,7 @@ body {
 input, textarea {
   user-select: text !important;
   -webkit-user-select: text !important;
+  transition: none !important;
 }
 
 .ripple { position: relative; overflow: hidden; }
@@ -54,8 +59,7 @@ input, textarea {
   -webkit-user-select: none !important;
 }
 
-/* Reorder specific */
-.reorder-item-dragging {
-  z-index: 100;
-  cursor: grabbing !important;
+/* Reorder Item Fixes - Disable transitions during drag */
+[data-framer-component-type="ReorderItem"] {
+  transition: background-color 0.2s ease, border-color 0.2s ease !important;
 }
