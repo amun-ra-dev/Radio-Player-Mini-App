@@ -1,9 +1,10 @@
 
-// Build: 2.5.8
+// Build: 2.6.0
+// - Feature: Symmetric swipe transitions (covers fly in/out in the swipe direction).
+// - Feature: Liquid content parallax (images/videos shift internally during drag).
 // - Feature: Video covers support (.mp4, .mov) with looping.
-// - Feature: Enhanced support for animated SVG and WebP.
 // - Feature: Volume level and last station persistence.
-// - Fix: Cancel button for sleep timer.
+// - UX: Refined CreativeEffect for expressive directional movement.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +23,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.5.8";
+const APP_VERSION = "2.6.0";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -34,7 +35,13 @@ const MiniEqualizer: React.FC = () => (
   </div>
 );
 
-const StationCover: React.FC<{ station: Station | null | undefined; className?: string; showTags?: boolean; parallax?: { x: number, y: number } }> = ({ station, className = "", showTags = true, parallax = { x: 0, y: 0 } }) => {
+const StationCover: React.FC<{ 
+  station: Station | null | undefined; 
+  className?: string; 
+  showTags?: boolean; 
+  parallax?: { x: number, y: number };
+  swipeShift?: number;
+}> = ({ station, className = "", showTags = true, parallax = { x: 0, y: 0 }, swipeShift = 0 }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
@@ -87,6 +94,11 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
     );
   }
 
+  // Calculate internal content shift based on gyro and swipe progress
+  // swipeShift is the progress of the slide (-1 to 1)
+  const internalX = (parallax.x * 8) - (swipeShift * 40);
+  const internalY = parallax.y * 8;
+
   return (
     <div className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}>
       {renderTags()}
@@ -103,11 +115,15 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
           initial={{ opacity: 0 }}
           animate={{ 
             opacity: isLoaded ? 1 : 0,
-            x: parallax.x * 8,
-            y: parallax.y * 8,
-            scale: 1.1 
+            x: internalX,
+            y: internalY,
+            scale: 1.15 
           }}
-          transition={{ opacity: { duration: 0.3 }, x: { type: 'spring', stiffness: 50, damping: 20 }, y: { type: 'spring', stiffness: 50, damping: 20 } }}
+          transition={{ 
+            opacity: { duration: 0.3 }, 
+            x: { type: 'spring', stiffness: 80, damping: 30, restDelta: 0.01 }, 
+            y: { type: 'spring', stiffness: 80, damping: 30, restDelta: 0.01 } 
+          }}
           onLoadedData={() => setIsLoaded(true)}
           onError={() => setHasError(true)}
           className="w-full h-full object-cover select-none pointer-events-none"
@@ -121,11 +137,15 @@ const StationCover: React.FC<{ station: Station | null | undefined; className?: 
           initial={{ opacity: 0 }}
           animate={{ 
             opacity: isLoaded ? 1 : 0,
-            x: parallax.x * 8,
-            y: parallax.y * 8,
-            scale: 1.1 
+            x: internalX,
+            y: internalY,
+            scale: 1.15 
           }}
-          transition={{ opacity: { duration: 0.3 }, x: { type: 'spring', stiffness: 50, damping: 20 }, y: { type: 'spring', stiffness: 50, damping: 20 } }}
+          transition={{ 
+            opacity: { duration: 0.3 }, 
+            x: { type: 'spring', stiffness: 80, damping: 30, restDelta: 0.01 }, 
+            y: { type: 'spring', stiffness: 80, damping: 30, restDelta: 0.01 } 
+          }}
           onLoad={() => setIsLoaded(true)}
           onError={() => setHasError(true)}
           className="w-full h-full object-cover select-none pointer-events-none"
@@ -241,6 +261,8 @@ export const App: React.FC = () => {
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   const [customTimerInput, setCustomTimerInput] = useState('');
 
+  // Track progress of slides for internal content parallax
+  const [slideProgress, setSlideProgress] = useState<Record<string, number>>({});
   const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(null);
   const isReorderingRef = useRef(false);
 
@@ -851,6 +873,16 @@ export const App: React.FC = () => {
               key={`swiper-${displayedStations.length}-${onlyFavoritesMode}`}
               initialSlide={initialSlideIndex}
               onSwiper={setSwiperInstance}
+              onProgress={(swiper) => {
+                // Update internal slide progress for liquid content shift
+                const progressMap: Record<string, number> = {};
+                swiper.slides.forEach((slideEl, index) => {
+                  const progress = (slideEl as any).progress;
+                  const station = displayedStations[index];
+                  if (station) progressMap[station.id] = progress;
+                });
+                setSlideProgress(progressMap);
+              }}
               onSlideChange={(swiper) => {
                 if (isReorderingRef.current) return;
                 
@@ -878,8 +910,21 @@ export const App: React.FC = () => {
               creativeEffect={{
                 limitProgress: 3,
                 perspective: true,
-                prev: { translate: ['-120%', 0, 0], rotate: [0, 0, -20], opacity: 0, shadow: false },
-                next: { translate: ['12px', 0, -100], scale: 0.9, opacity: 0.6, shadow: false },
+                // Symmetric config:
+                // If moving left (swiping right-to-left): translate is negative
+                // If moving right (swiping left-to-right): translate is positive
+                prev: { 
+                  translate: ['-100%', 0, -200], 
+                  rotate: [0, 0, -15], 
+                  opacity: 0, 
+                  shadow: false 
+                },
+                next: { 
+                  translate: ['100%', 0, -200], 
+                  rotate: [0, 0, 15], 
+                  opacity: 0, 
+                  shadow: false 
+                },
               }}
               modules={[EffectCreative, Keyboard]}
               keyboard={{ enabled: true }}
@@ -888,7 +933,12 @@ export const App: React.FC = () => {
               {displayedStations.map((station) => (
                 <SwiperSlide key={station.id} className="w-full h-full flex justify-center">
                   <div className="relative w-full aspect-square rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-all duration-500" style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent', boxShadow: activeStationId === station.id ? `0 20px 60px -10px ${nativeAccentColor}22` : 'none' }} onClick={() => canPlay && handleTogglePlay()}>
-                    <StationCover station={station} className="w-full h-full" parallax={activeStationId === station.id ? orientation : { x: 0, y: 0 }} />
+                    <StationCover 
+                      station={station} 
+                      className="w-full h-full" 
+                      parallax={activeStationId === station.id ? orientation : { x: 0, y: 0 }} 
+                      swipeShift={slideProgress[station.id] || 0}
+                    />
                     <div className="absolute bottom-6 right-6 z-30" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
                       <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105 shadow-lg shadow-amber-500/30' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
                         {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
