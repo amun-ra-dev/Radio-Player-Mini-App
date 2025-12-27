@@ -16,6 +16,7 @@
   user-select: none !important;
   -webkit-user-select: none !important;
   -webkit-touch-callout: none !important;
+  scrollbar-width: none; /* Firefox */
 }
 
 body {
@@ -51,4 +52,10 @@ input, textarea {
 .swiper-slide {
   user-select: none !important;
   -webkit-user-select: none !important;
+}
+
+/* Reorder specific */
+.reorder-item-dragging {
+  z-index: 100;
+  cursor: grabbing !important;
 }
