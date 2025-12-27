@@ -1,11 +1,12 @@
 
-// Build: 2.9.6
-// - Fix: "Jerky" reordering by optimizing ReorderItem props and transitions.
-// - UX: Instant scale feedback on long-press before drag starts.
+// Build: 2.9.7
+// - Feature: Horizontal "Swipe to Back" (Left-to-Right) to collapse the expanded playlist.
+// - UX: Refined Reordering smoothness with optimized spring physics and layout management.
 // - UI: Controls hide automatically when playlist is expanded.
-// - Feature: Custom Sleep Timer and Enhanced Station Editor.
+// - Logic: Improved gesture isolation between scroll, drag, and reorder.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+/* Removed usePanGesture as it is not an exported member of framer-motion */
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCreative, Keyboard } from 'swiper/modules';
@@ -215,11 +216,10 @@ export const App: React.FC = () => {
   const handleReorder = (reorderedItems: Station[]) => {
     isReorderingRef.current = true;
     const reorderedIds = new Set(reorderedItems.map(item => item.id));
-    // Correctly merge reordered subset back into the full stations list
     const newStations = [...reorderedItems, ...stations.filter(item => !reorderedIds.has(item.id))];
     setStations(newStations);
     hapticImpact('light');
-    setTimeout(() => { isReorderingRef.current = false; }, 300);
+    setTimeout(() => { isReorderingRef.current = false; }, 400);
   };
 
   const handleDemo = () => {
@@ -384,7 +384,18 @@ export const App: React.FC = () => {
           </AnimatePresence>
         </div>
 
-        <div className="flex-1 overflow-hidden flex flex-col px-6 mt-4">
+        {/* PLAYLIST SECTION with Pan Gesture for Swipe-to-Back */}
+        <motion.div 
+            onPan={(e, info) => {
+                if (!isSheetExpanded) return;
+                // Detect Left-to-Right swipe (x offset positive and greater than y offset)
+                if (info.offset.x > 80 && Math.abs(info.offset.x) > Math.abs(info.offset.y)) {
+                    setIsSheetExpanded(false);
+                    hapticImpact('soft');
+                }
+            }}
+            className="flex-1 overflow-hidden flex flex-col px-6 mt-4"
+        >
             <div className="flex items-center bg-black/5 dark:bg-white/[0.04] rounded-2xl p-1 mb-4 shrink-0">
                 <button onClick={() => setPlaylistFilter('all')} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${playlistFilter === 'all' ? 'bg-white shadow-md' : 'opacity-40'}`} style={{ color: playlistFilter === 'all' ? nativeAccentColor : undefined }}>Все</button>
                 <button onClick={() => setPlaylistFilter('favorites')} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all ${playlistFilter === 'favorites' ? 'bg-white shadow-md' : 'opacity-40'}`} style={{ color: playlistFilter === 'favorites' ? nativeAccentColor : undefined }}>Избранное</button>
@@ -414,7 +425,7 @@ export const App: React.FC = () => {
                     </div>
                 </div>
             </div>
-        </div>
+        </motion.div>
       </motion.div>
 
       {/* MODALS */}
@@ -508,7 +519,7 @@ const LongPressReorderItem: React.FC<{
             hapticImpact('heavy');
             setIsLongPressed(true);
             dragControls.start(e);
-        }, 400); // Trigger long press pick-up
+        }, 400); 
     };
 
     const handlePointerUp = () => {
@@ -516,11 +527,8 @@ const LongPressReorderItem: React.FC<{
         setIsLongPressed(false);
     };
 
-    const handlePointerMove = (e: React.PointerEvent) => {
-        // Cancel pick up if user moves before long press initiates
-        if (timerRef.current && !isLongPressed) {
-          // Add threshold if needed
-        }
+    const handlePointerMove = () => {
+        // Threshold check usually handled by pointerdown timeout
     };
 
     return (
@@ -534,15 +542,16 @@ const LongPressReorderItem: React.FC<{
             onDragStart={() => setIsDraggingActive(true)}
             onDragEnd={() => { setIsDraggingActive(false); setIsLongPressed(false); }}
             whileDrag={{ 
-                scale: 1.04, 
+                scale: 1.05, 
                 zIndex: 100, 
-                backgroundColor: 'rgba(255,255,255,0.05)',
-                backdropFilter: 'blur(20px)',
-                boxShadow: '0 20px 40px -15px rgba(0,0,0,0.4)',
+                backgroundColor: 'rgba(255,255,255,0.08)',
+                backdropFilter: 'blur(25px)',
+                boxShadow: '0 25px 60px -15px rgba(0,0,0,0.5)',
             }}
-            animate={{ scale: isLongPressed || isDraggingActive ? 1.04 : 1 }}
-            transition={{ type: 'spring', damping: 30, stiffness: 600, mass: 0.8 }}
-            className={`flex items-center gap-3 p-3 rounded-2xl border-2 ${isActive ? 'bg-blue-50/50 dark:bg-white/5 border-blue-100/50' : 'bg-white dark:bg-white/0 border-transparent'} ${isDraggingActive ? 'opacity-90' : ''} cursor-pointer touch-none`}
+            layout
+            animate={{ scale: isLongPressed || isDraggingActive ? 1.05 : 1 }}
+            transition={{ type: 'spring', damping: 20, stiffness: 400, mass: 0.7 }}
+            className={`flex items-center gap-3 p-3 rounded-2xl border-2 transition-colors duration-200 ${isActive ? 'bg-blue-50/50 dark:bg-white/5 border-blue-100/50' : 'bg-white dark:bg-white/0 border-transparent'} ${isDraggingActive ? 'opacity-90 grayscale-[0.1]' : ''} cursor-pointer touch-none`}
             onClick={() => { if (!isDraggingActive && !isLongPressed) onSelect(); }}
         >
             <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-2xl bg-gray-100 dark:bg-[#222]">
