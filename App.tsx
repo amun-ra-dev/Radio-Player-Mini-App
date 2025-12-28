@@ -1,6 +1,7 @@
 
-// Build: 2.9.16
-// - UI: Added "Flash Overlay" effect when toggling play/pause for visual feedback.
+// Build: 2.9.17
+// - UI: Replaced harsh flash with a stylish "soft bloom pulse" (radial light burst) for play/pause.
+// - UI: Refined main cover scale animation for better tactile feedback.
 // - UI: Removed headers from Station Editor (Edit/New) for a cleaner look.
 // - UI: Added "Clear All" button to playlist (visible in Edit Mode).
 // - UI: Updated "Export to Clipboard" to include 🤖 @mdsradibot Station List prefix.
@@ -22,7 +23,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.16";
+const APP_VERSION = "2.9.17";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -631,11 +632,13 @@ export const App: React.FC = () => {
                       key={`impact-${station.id}-${actionTrigger}`}
                       initial={false}
                       animate={{ 
-                        scale: activeStationId === station.id ? [1, 0.92, 1] : 1 
+                        scale: activeStationId === station.id ? [1, 0.94, 1] : 1 
                       }}
                       transition={{ 
-                        duration: 0.35, 
-                        ease: "easeInOut"
+                        duration: 0.4, 
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 20
                       }}
                       className="relative z-10 w-full h-full"
                     >
@@ -646,14 +649,14 @@ export const App: React.FC = () => {
                       >
                         <StationCover station={station} className="w-full h-full" />
                         
-                        {/* Flash Overlay Effect on Play/Pause */}
+                        {/* Stylish Bloom Pulse Effect on Play/Pause */}
                         {activeStationId === station.id && (
                           <motion.div
-                            key={`flash-${actionTrigger}`}
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: [0, 0.4, 0] }}
-                            transition={{ duration: 0.4, ease: "easeOut" }}
-                            className="absolute inset-0 bg-white pointer-events-none z-40"
+                            key={`bloom-${actionTrigger}`}
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: [0, 0.5, 0], scale: [0.8, 1.25] }}
+                            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                            className="absolute inset-0 bg-[radial-gradient(circle,_rgba(255,255,255,0.8)_0%,_transparent_70%)] pointer-events-none z-40 blur-xl"
                           />
                         )}
 
