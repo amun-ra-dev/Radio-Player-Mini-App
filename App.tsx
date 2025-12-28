@@ -1,8 +1,8 @@
 
-// Build: 2.8.5
-// - Feature: Ultra-smooth playlist reordering (no shadows during drag).
-// - UI: Modern button style for "Edit/Done" toggle in playlist header.
-// - UX: Optimized spring physics for list items.
+// Build: 2.8.6
+// - Fix: Removed CSS transitions from reorderable items to fix "jerky" movement.
+// - UI: Styled Pill Button for "Edit/Done" in the top-right corner.
+// - UX: Ultra-smooth reordering physics with high damping.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -20,7 +20,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.8.5";
+const APP_VERSION = "2.8.6";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -176,9 +176,9 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       exit={{ opacity: 0, scale: 0.9 }}
       transition={{ 
         type: "spring", 
-        stiffness: 400, 
-        damping: 40,
-        layout: { duration: 0.2 }
+        stiffness: 500, 
+        damping: 50,
+        layout: { duration: 0.25 }
       }}
       onDragStart={() => { 
         setIsDragging(true); 
@@ -188,10 +188,11 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       whileDrag={{ 
         scale: 1.02, 
         zIndex: 100, 
-        backgroundColor: "var(--tg-theme-secondary-bg-color, #f0f0f0)",
-        boxShadow: "none" // Removed shadow for maximum smoothness
+        backgroundColor: "var(--tg-theme-secondary-bg-color, #f8f8f8)",
+        boxShadow: "none" 
       }}
-      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-all group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} ${isDragging ? '' : 'shadow-sm'}`}
+      // CRITICAL: Removed "transition-all" because it breaks Framer Motion's layout animations (causes jerkiness)
+      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} ${isDragging ? 'z-50' : 'shadow-sm'}`}
       onClick={() => !isDragging && (isEditMode ? onEdit({} as any) : onSelect())}
     >
       {isEditMode && (
@@ -1080,22 +1081,22 @@ export const App: React.FC = () => {
               transition={{ type: 'spring', bounce: 0, duration: 0.5 }} 
               className="fixed bottom-0 left-0 right-0 h-[92vh] bg-white/95 dark:bg-black/60 rounded-t-[3.5rem] z-40 flex flex-col overflow-hidden pb-10 border-t border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[80px]"
             >
-              {/* Playlist Header: Updated to Button-style Edit Toggle */}
+              {/* Playlist Header: Button-style Toggle in Top Right */}
               <div className="w-full flex items-center justify-between px-8 pt-7 pb-3 shrink-0 touch-none">
-                <div className="w-24" /> {/* Balanced Spacer */}
+                <div className="w-32" /> {/* Balanced Spacer for Right Alignment */}
                 <div className="w-12 h-1.5 bg-black/10 dark:bg-white/10 rounded-full cursor-grab active:cursor-grabbing" onPointerDown={(e) => !isPlaylistEditMode && dragControls.start(e)} />
-                <div className="w-24 text-right">
+                <div className="w-32 text-right">
                   <RippleButton 
                     onClick={() => {
                       hapticImpact('medium');
                       setIsPlaylistEditMode(!isPlaylistEditMode);
                     }}
-                    className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-sm border border-transparent dark:border-white/5 focus:outline-none focus:ring-0 focus-visible:ring-0 ${isPlaylistEditMode ? 'text-white' : 'bg-black/5 dark:bg-white/10 text-gray-500 dark:text-gray-400'}`}
+                    className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-sm border border-transparent dark:border-white/5 focus:outline-none focus:ring-0 focus-visible:ring-0 ${isPlaylistEditMode ? 'text-white' : 'bg-black/5 dark:bg-white/10 text-gray-500 dark:text-gray-400'}`}
                     style={{ 
                       backgroundColor: isPlaylistEditMode ? nativeAccentColor : undefined,
                     }}
                   >
-                    {isPlaylistEditMode ? 'Готово' : 'Изм.'}
+                    {isPlaylistEditMode ? 'Готово' : 'Редактировать'}
                   </RippleButton>
                 </div>
               </div>
