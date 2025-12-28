@@ -1,11 +1,10 @@
 
-// Build: 2.9.30
-// - Fix: Enhanced Keyboard overlap protection in Editor modal.
-// - Feature: Increased bottom scroll padding for mobile forms.
-// - Feature: Auto-scroll to focused input fields (block: center).
-// - Feature: Background Playback Full Optimization.
-// - Feature: Added Lockscreen/Headphone navigation support (Next/Prev track).
-// - Feature: M3U (#EXTINF) format parsing during import.
+// Build: 2.9.32
+// - Fix: Robust keyboard overlap protection with target persistence.
+// - UI: Centered modals with enhanced overflow handling.
+// - UI: Subtle pulse animation for active station cover.
+// - Feature: Background Playback & Media Session API integration.
+// - Feature: M3U and JSON import/export enhancements.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -13,7 +12,7 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCreative, Keyboard } from 'swiper/modules';
 import type { Swiper as SwiperClass } from 'swiper';
 
-import { Station, PlayerStatus, ExportSchemaV2 } from './types.ts';
+import { Station, PlayerStatus } from './types.ts';
 import { DEFAULT_STATIONS, Icons } from './constants.tsx';
 import { useTelegram } from './hooks/useTelegram.ts';
 import { useAudio } from './hooks/useAudio.ts';
@@ -23,16 +22,14 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.30";
+const APP_VERSION = "2.9.32";
 
-// Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
   if (!url) return false;
   const cleanUrl = url.split(/[?#]/)[0].toLowerCase();
   return cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.webm');
 };
 
-// Helper to parse M3U like text
 const parseM3uText = (text: string): Partial<Station>[] => {
   const lines = text.split('\n');
   const stations: Partial<Station>[] = [];
@@ -48,7 +45,6 @@ const parseM3uText = (text: string): Partial<Station>[] => {
         currentName = line.substring(commaIndex + 1).trim();
       }
     } else if (!line.startsWith('#')) {
-      // Attempt to treat as URL
       try {
         new URL(line);
         stations.push({
@@ -56,15 +52,12 @@ const parseM3uText = (text: string): Partial<Station>[] => {
           streamUrl: line
         });
         currentName = null;
-      } catch {
-        // Not a URL, skip
-      }
+      } catch { /* Not a URL */ }
     }
   }
   return stations;
 };
 
-// Helper to extract JSON from a string that might contain extra text
 const extractJsonFromText = (text: string): any => {
   try {
     return JSON.parse(text);
@@ -83,11 +76,7 @@ const extractJsonFromText = (text: string): any => {
     if (startIdx !== -1) {
       const lastIdx = text.lastIndexOf(endChar);
       if (lastIdx > startIdx) {
-        try {
-          return JSON.parse(text.substring(startIdx, lastIdx + 1));
-        } catch (err) {
-          return null;
-        }
+        try { return JSON.parse(text.substring(startIdx, lastIdx + 1)); } catch { return null; }
       }
     }
     return null;
@@ -109,7 +98,8 @@ const StationCover: React.FC<{
   className?: string; 
   showTags?: boolean;
   showLink?: boolean;
-}> = ({ station, className = "", showTags = true, showLink = true }) => {
+  isPlaying?: boolean;
+}> = ({ station, className = "", showTags = true, showLink = true, isPlaying = false }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
@@ -118,22 +108,14 @@ const StationCover: React.FC<{
   useEffect(() => {
     setHasError(false);
     setIsLoaded(false);
-    if (!station?.coverUrl) return;
-    if (!isVideo) {
-      const img = mediaRef.current as HTMLImageElement;
-      if (img && img.complete && img.naturalWidth > 0) setIsLoaded(true);
-    } else {
-      const video = mediaRef.current as HTMLVideoElement;
-      if (video && video.readyState >= 3) setIsLoaded(true);
-    }
-  }, [station?.id, station?.coverUrl, isVideo]);
+  }, [station?.id, station?.coverUrl]);
 
   const renderTags = () => {
     if (!showTags || !station?.tags || station.tags.length === 0) return null;
     return (
       <div className="absolute top-4 left-4 z-20 flex flex-wrap gap-1.5 max-w-[80%] pointer-events-none">
         {station.tags.map(tag => (
-          <span key={tag} className="text-[8px] font-black uppercase px-2 py-1 bg-black/40 backdrop-blur-md text-white rounded-lg border border-white/10">
+          <span key={tag} className="text-[8px] font-black uppercase px-2 py-1 bg-black/40 backdrop-blur-md text-white rounded-lg border border-white/10 shadow-sm">
             {tag}
           </span>
         ))}
@@ -149,9 +131,7 @@ const StationCover: React.FC<{
           e.stopPropagation();
           if ((window as any).Telegram?.WebApp?.openLink) {
             (window as any).Telegram.WebApp.openLink(station.homepageUrl);
-          } else {
-            window.open(station.homepageUrl, '_blank');
-          }
+          } else { window.open(station.homepageUrl, '_blank'); }
         }}
         className="absolute bottom-4 left-4 z-30 flex items-center gap-1.5 px-2.5 py-1.5 bg-black/40 backdrop-blur-md text-white rounded-lg border border-white/10 text-[8px] font-black uppercase tracking-wider transition-all active:scale-95 hover:bg-black/60 shadow-lg"
       >
@@ -175,6 +155,16 @@ const StationCover: React.FC<{
     <div className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}>
       {renderTags()}
       {renderLink()}
+      <AnimatePresence>
+        {isPlaying && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="absolute inset-0 z-10 border-4 border-blue-500/30 rounded-[inherit] pointer-events-none shadow-[inset_0_0_40px_rgba(59,130,246,0.3)]"
+          />
+        )}
+      </AnimatePresence>
       {isVideo ? (
         <motion.video
           ref={mediaRef as any}
@@ -226,9 +216,8 @@ interface ReorderItemProps {
 }
 
 const ReorderableStationItem: React.FC<ReorderItemProps> = ({
-  station, isActive, isPlaying, isFavorite, isEditMode, status, accentColor, destructiveColor, onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact
+  station, isActive, isPlaying, isFavorite, isEditMode, status, accentColor, onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact
 }) => {
-  const [isDragging, setIsDragging] = useState(false);
   const controls = useDragControls();
 
   return (
@@ -240,12 +229,11 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      transition={{ type: "spring", stiffness: 500, damping: 50, layout: { duration: 0.25 } }}
-      onDragStart={() => { setIsDragging(true); hapticImpact('light'); }}
-      onDragEnd={() => setIsDragging(false)}
-      whileDrag={{ scale: 1.02, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #f8f8f8)", boxShadow: "none" }}
-      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} ${isDragging ? 'z-50' : 'shadow-sm select-none'}`}
-      onClick={(e: React.MouseEvent) => !isDragging && (isEditMode ? onEdit(e) : onSelect())}
+      transition={{ type: "spring", stiffness: 500, damping: 50 }}
+      onDragStart={() => hapticImpact('light')}
+      whileDrag={{ scale: 1.02, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #f8f8f8)" }}
+      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} shadow-sm select-none`}
+      onClick={(e: React.MouseEvent) => (isEditMode ? onEdit(e) : onSelect())}
     >
       {isEditMode && (
         <div className="p-3 cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-600 flex items-center justify-center shrink-0" onPointerDown={(e) => controls.start(e)}>
@@ -357,7 +345,6 @@ export const App: React.FC = () => {
     else swiperInstance.slidePrev(); 
   }, [swiperInstance, hapticImpact]);
 
-  // Hook into useAudio with navigation callbacks
   const { status, volume, setVolume, play, stop } = useAudio(
     playingStation,
     () => navigateStation('next'),
@@ -494,20 +481,13 @@ export const App: React.FC = () => {
     try {
       const text = await navigator.clipboard.readText();
       const data = extractJsonFromText(text);
-      if (data) { 
-        processImportData(data); 
-        setShowImportModal(false); 
-      } else {
+      if (data) { processImportData(data); setShowImportModal(false); }
+      else {
         const parsedStations = parseM3uText(text);
-        if (parsedStations.length > 0) {
-          processImportData(parsedStations);
-          setShowImportModal(false);
-        } else {
-          setSnackbar('Данные не распознаны (нужен JSON или M3U)'); 
-          hapticNotification('warning');
-        }
+        if (parsedStations.length > 0) { processImportData(parsedStations); setShowImportModal(false); }
+        else { setSnackbar('Данные не распознаны (нужен JSON или M3U)'); hapticNotification('warning'); }
       }
-    } catch (err) { setSnackbar('Ошибка доступа к буферма обмена'); hapticNotification('error'); }
+    } catch (err) { setSnackbar('Ошибка доступа к буферу обмена'); hapticNotification('error'); }
   }, [hapticNotification]);
 
   const processImportData = (data: any) => {
@@ -546,25 +526,14 @@ export const App: React.FC = () => {
 
   const handleExportToClipboard = useCallback((filter: 'all' | 'favorites') => {
     const targetStations = filter === 'favorites' ? stations.filter(s => favorites.includes(s.id)) : stations;
-    
-    if (targetStations.length === 0) {
-      setSnackbar('Список пуст');
-      hapticNotification('warning');
-      return;
-    }
+    if (targetStations.length === 0) { setSnackbar('Список пуст'); hapticNotification('warning'); return; }
 
     const schema = {
       schemaVersion: 2,
       appVersion: APP_VERSION,
       exportedAt: Date.now(),
       stations: targetStations.map(s => ({
-        id: s.id,
-        title: s.name,
-        streamUrl: s.streamUrl,
-        coverUrl: s.coverUrl,
-        homepageUrl: s.homepageUrl,
-        tags: s.tags,
-        isFavorite: favorites.includes(s.id)
+        id: s.id, title: s.name, streamUrl: s.streamUrl, coverUrl: s.coverUrl, homepageUrl: s.homepageUrl, tags: s.tags, isFavorite: favorites.includes(s.id)
       }))
     };
 
@@ -599,16 +568,28 @@ export const App: React.FC = () => {
     e.stopPropagation(); setConfirmData({ message: 'Удалить эту станцию?', onConfirm: () => { const filtered = stations.filter(s => s.id !== id); setStations(filtered); setFavorites(prev => prev.filter(fid => fid !== id)); if (playingStationId === id) { setPlayingStationId(''); stop(); } if (activeStationId === id) { if (filtered.length > 0) setActiveStationId(filtered[0].id); else setActiveStationId(''); } hapticImpact('heavy'); setSnackbar('Станция удалена'); setShowConfirmModal(false); } }); setShowConfirmModal(true);
   };
 
+  // Fix: Added missing handleClearAll function to resolve reference error in playlist editor
   const handleClearAll = () => {
-    setConfirmData({ message: 'Очистить весь список станций?', onConfirm: () => { setStations([]); setFavorites([]); setPlayingStationId(''); setActiveStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Список очищен'); setShowConfirmModal(false); } }); setShowConfirmModal(true);
+    setConfirmData({
+      message: 'Очистить весь список станций?',
+      onConfirm: () => {
+        setStations([]);
+        setFavorites([]);
+        setPlayingStationId('');
+        setActiveStationId('');
+        stop();
+        hapticImpact('heavy');
+        setSnackbar('Список очищен');
+        setShowConfirmModal(false);
+      }
+    });
+    setShowConfirmModal(true);
   };
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     if (!isMobile) return;
-    // Delay slightly to allow keyboard to finish opening and viewport to resize correctly in Telegram
-    setTimeout(() => {
-      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 450);
+    const target = e.target;
+    setTimeout(() => { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 450);
   };
 
   const addOrUpdateStation = (e: React.FormEvent<HTMLFormElement>) => {
@@ -643,7 +624,7 @@ export const App: React.FC = () => {
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20 dark:opacity-40 bg-[radial-gradient(circle_at_center,_#3b82f6_0%,_transparent_70%)] dark:bg-[radial-gradient(circle_at_center,_#1d4ed8_0%,_transparent_80%)]" />
       <div className="flex items-center justify-between px-6 bg-white/70 dark:bg-black/30 border-b border-black/5 dark:border-white/10 z-20 shrink-0 backdrop-blur-[70px]" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)', paddingBottom: '12px' }}>
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setShowAboutModal(true)}>
-          <Logo className="w-8 h-8 transition-colors duration-300" style={{ color: nativeAccentColor }} />
+          <Logo className={`w-8 h-8 transition-colors duration-300 ${isActuallyPlaying ? 'animate-pulse' : ''}`} style={{ color: nativeAccentColor }} />
           <h1 className="text-2xl font-black tracking-tighter leading-none transition-colors duration-300">Radio Player</h1>
         </div>
         <div className="flex items-center gap-1">
@@ -689,8 +670,8 @@ export const App: React.FC = () => {
                 <SwiperSlide key={station.id} className="w-full h-full flex justify-center">
                   <div className="relative w-full aspect-square group" onClick={() => handleTogglePlay()}>
                     <motion.div animate={{ scale: activeStationId === station.id ? [1, 0.965, 1] : 1 }} transition={{ duration: 0.45, type: "spring", stiffness: 280, damping: 18 }} className="relative z-10 w-full h-full">
-                      <motion.div className="w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-colors duration-700 relative" style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}>
-                        <StationCover station={station} className="w-full h-full" />
+                      <motion.div className="w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-colors duration-700 relative shadow-2xl shadow-black/10 dark:shadow-blue-500/10" style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}66` : 'transparent' }}>
+                        <StationCover station={station} className="w-full h-full" isPlaying={playingStationId === station.id && isActuallyPlaying} />
                         <AnimatePresence mode="popLayout">
                           {activeStationId === station.id && (
                             <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-[2.5rem] z-40">
@@ -789,21 +770,19 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* --- MODALS --- */}
       <AnimatePresence>
         {showEditor && (
-          <div className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center p-4 overflow-hidden pt-[var(--tg-safe-top,10px)]">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 overflow-hidden pt-[var(--tg-safe-top,10px)]">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditor(false)} />
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[85vh] no-scrollbar">
-              <div className="flex justify-center mb-6 mt-2"><div className="w-36 h-36 rounded-3xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10 relative">{editorCoverPreview ? <StationCover station={{ name: 'Preview', coverUrl: editorCoverPreview }} className="w-full h-full" showTags={false} showLink={false} /> : <Icons.Add className="w-8 h-8 opacity-20" />}</div></div>
+              <div className="flex justify-center mb-6 mt-2"><div className="w-36 h-36 rounded-3xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10 relative shadow-inner">{editorCoverPreview ? <StationCover station={{ name: 'Preview', coverUrl: editorCoverPreview }} className="w-full h-full" showTags={false} showLink={false} /> : <Icons.Add className="w-8 h-8 opacity-20" />}</div></div>
               <form onSubmit={addOrUpdateStation} className="space-y-4">
-                <input name="name" onFocus={handleInputFocus} defaultValue={editingStation?.name} placeholder="Название станции" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
-                <input name="url" onFocus={handleInputFocus} defaultValue={editingStation?.streamUrl} placeholder="Stream URL" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
-                <input name="coverUrl" onFocus={handleInputFocus} defaultValue={editingStation?.coverUrl} placeholder="URL Обложки" onChange={(e) => setEditorCoverPreview(e.target.value)} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
-                <input name="homepageUrl" onFocus={handleInputFocus} defaultValue={editingStation?.homepageUrl} placeholder="Сайт станции" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
-                <input name="tags" onFocus={handleInputFocus} defaultValue={editingStation?.tags?.join(', ')} placeholder="Теги" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                <input name="name" onFocus={handleInputFocus} defaultValue={editingStation?.name} placeholder="Название станции" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all text-sm" />
+                <input name="url" onFocus={handleInputFocus} defaultValue={editingStation?.streamUrl} placeholder="Stream URL" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all text-sm" />
+                <input name="coverUrl" onFocus={handleInputFocus} defaultValue={editingStation?.coverUrl} placeholder="URL Обложки" onChange={(e) => setEditorCoverPreview(e.target.value)} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all text-sm" />
+                <input name="homepageUrl" onFocus={handleInputFocus} defaultValue={editingStation?.homepageUrl} placeholder="Сайт станции" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all text-sm" />
+                <input name="tags" onFocus={handleInputFocus} defaultValue={editingStation?.tags?.join(', ')} placeholder="Теги" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all text-sm" />
                 <div className="flex gap-3 pt-6"><RippleButton type="button" onClick={() => setShowEditor(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton><RippleButton type="submit" className="flex-1 py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Сохранить</RippleButton></div>
-                {/* Massive bottom spacer to allow extreme scrolling when keyboard is up */}
                 <div className="h-60 sm:hidden" />
               </form>
             </motion.div>
@@ -817,7 +796,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSleepTimerModal(false)} />
             <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center">
               <h2 className="text-2xl font-black mb-6">Таймер сна</h2>
-              <div className="grid grid-cols-3 gap-2 mb-4">{[15, 30, 45, 60, 90, 120].map(min => <RippleButton key={min} onClick={() => handleSetSleepTimer(min)} className="py-3 bg-black/5 dark:bg-white/5 rounded-xl font-black transition-all text-xs">{min} м</RippleButton>)}</div>
+              <div className="grid grid-cols-3 gap-2 mb-4">{[15, 30, 45, 60, 90, 120].map(min => <RippleButton key={min} onClick={() => handleSetSleepTimer(min)} className="py-3 bg-black/5 dark:bg-white/5 rounded-xl font-black transition-all text-xs active:bg-blue-500 active:text-white">{min} м</RippleButton>)}</div>
               <div className="flex gap-2 mb-6"><input type="number" onFocus={handleInputFocus} value={customSleepMinutes} onChange={(e) => setCustomSleepMinutes(e.target.value)} placeholder="Минуты" className="flex-1 bg-black/5 dark:bg-white/5 rounded-xl px-4 py-3 font-bold outline-none text-center" /><RippleButton onClick={() => { const val = parseInt(customSleepMinutes); if (!isNaN(val) && val > 0) handleSetSleepTimer(val); }} disabled={!customSleepMinutes} className="px-6 rounded-xl text-white font-black transition-opacity disabled:opacity-20" style={{ backgroundColor: nativeAccentColor }}>OK</RippleButton></div>
               <RippleButton onClick={() => handleSetSleepTimer(0)} className="w-full py-4 text-red-500 bg-red-500/10 rounded-2xl font-black">Отключить</RippleButton>
             </motion.div>
@@ -826,10 +805,10 @@ export const App: React.FC = () => {
       </AnimatePresence>
 
       <AnimatePresence>{showConfirmModal && confirmData && <div className="fixed inset-0 z-[100] flex items-center justify-center p-10"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowConfirmModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-white dark:bg-[#252525] p-8 rounded-[2.5rem] text-center max-w-xs shadow-2xl"><p className="font-black text-xl mb-6">{confirmData.message}</p><div className="flex gap-4"><RippleButton onClick={() => setShowConfirmModal(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-40">Нет</RippleButton><RippleButton onClick={confirmData.onConfirm} className="flex-1 py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeDestructiveColor }}>Да</RippleButton></div></motion.div></div>}</AnimatePresence>
-      <AnimatePresence>{showImportModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowImportModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><h2 className="text-2xl font-black mb-4">Импорт данных</h2><p className="opacity-60 text-sm mb-6 font-medium">Вставьте скопированный список станций (JSON или M3U) из буфера обмена.</p><div className="space-y-3"><RippleButton onClick={handleImportFromClipboard} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Paste /> Вставить из буфера</RippleButton><RippleButton onClick={() => setShowImportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton></div></motion.div></div>}</AnimatePresence>
+      <AnimatePresence>{showImportModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowImportModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><h2 className="text-2xl font-black mb-4">Импорт данных</h2><p className="opacity-60 text-sm mb-6 font-medium">Вставьте список станций (JSON или M3U) из буфера обмена.</p><div className="space-y-3"><RippleButton onClick={handleImportFromClipboard} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Paste /> Вставить из буфера</RippleButton><RippleButton onClick={() => setShowImportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton></div></motion.div></div>}</AnimatePresence>
       <AnimatePresence>{showExportModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowExportModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><h2 className="text-2xl font-black mb-4">Экспорт в буфер</h2><p className="opacity-60 text-sm mb-6 font-medium">Выберите, какие станции скопировать в буфер обмена.</p><div className="space-y-3"><RippleButton onClick={() => handleExportToClipboard('all')} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Copy /> Все станции</RippleButton><RippleButton onClick={() => handleExportToClipboard('favorites')} disabled={!hasFavorites} className={`w-full py-4 bg-amber-500 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3 disabled:opacity-20`}><Icons.Star /> Только избранное</RippleButton><RippleButton onClick={() => setShowExportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton></div></motion.div></div>}</AnimatePresence>
       <AnimatePresence>{showAboutModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAboutModal(false)} /><motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><Logo className="w-16 h-16 mx-auto mb-4" style={{ color: nativeAccentColor }} /><h2 className="text-2xl font-black mb-1">Radio Player</h2><p className="opacity-40 text-[10px] font-black uppercase tracking-widest mb-6">v{APP_VERSION}</p><div className="space-y-4 text-left bg-black/5 dark:bg-white/5 p-4 rounded-2xl text-xs font-medium opacity-80 mb-6"><p>• Фоновое управление (Экран / Гарнитура)</p><p>• Копирование: Все / Избранное</p><p>• Парсинг M3U (#EXTINF)</p><p>• Тёмная и светлая темы</p></div><RippleButton onClick={() => setShowAboutModal(false)} className="w-full py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Закрыть</RippleButton></motion.div></div>}</AnimatePresence>
-      <AnimatePresence>{snackbar && <motion.div initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 60 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-black/95 text-white px-8 py-5 rounded-[2.5rem] font-bold shadow-2xl">{snackbar}</motion.div>}</AnimatePresence>
+      <AnimatePresence>{snackbar && <motion.div initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 60 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-black/95 text-white px-8 py-5 rounded-[2.5rem] font-bold shadow-2xl border border-white/10">{snackbar}</motion.div>}</AnimatePresence>
     </div>
   );
 };

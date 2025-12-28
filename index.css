@@ -1,6 +1,7 @@
+
 /* Base styles and Tailwind shadow variables fix */
 :root {
-  --swiper-theme-color: #2563eb;
+  --swiper-theme-color: #3b82f6;
   
   /* Reset Tailwind shadow variables to prevent undefined behavior */
   --tw-ring-offset-shadow: 0 0 #0000;
@@ -10,7 +11,8 @@
 }
 
 * {
-  transition: background-color 0.4s ease-out, border-color 0.4s ease-out, color 0.4s ease-out;
+  transition: background-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1), color 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -18,6 +20,7 @@ body {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-attachment: fixed;
 }
 
 /* Скрытие полосы прокрутки */
@@ -35,9 +38,38 @@ body {
   width: 6px;
 }
 .dark ::-webkit-scrollbar-thumb {
-  background: #333;
+  background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
 }
 .dark ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: currentColor;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  border: 4px solid white;
+}
+
+.dark input[type="range"]::-webkit-slider-thumb {
+  border-color: #1a1a1a;
+}
+
+.ripple { 
+  position: relative; 
+  overflow: hidden; 
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(.8); opacity: 0.5; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
