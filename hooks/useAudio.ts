@@ -4,7 +4,11 @@ import { PlayerStatus, Station } from '../types.ts';
 
 declare const Hls: any;
 
-export const useAudio = (currentStation: Station | null) => {
+export const useAudio = (
+  currentStation: Station | null,
+  onNext?: () => void,
+  onPrev?: () => void
+) => {
   const [status, setStatus] = useState<PlayerStatus>('idle');
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('radio_volume');
@@ -59,6 +63,7 @@ export const useAudio = (currentStation: Station | null) => {
     } else {
       setStatus('error');
       shouldBePlayingRef.current = false;
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none';
     }
   }, []);
 
@@ -156,7 +161,13 @@ export const useAudio = (currentStation: Station | null) => {
       }
     };
 
-    const onPause = () => { if (!shouldBePlayingRef.current) setStatus('paused'); };
+    const onPause = () => { 
+      if (!shouldBePlayingRef.current) {
+        setStatus('paused');
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
+      }
+    };
+
     const onWaiting = () => { if (shouldBePlayingRef.current) setStatus('loading'); };
     const onError = (e: any) => handleAudioError(e);
 
@@ -182,28 +193,29 @@ export const useAudio = (currentStation: Station | null) => {
   useEffect(() => {
     if (!('mediaSession' in navigator)) return;
 
-    const actionHandlers: [MediaSessionAction, () => void][] = [
+    const actionHandlers: [MediaSessionAction, (() => void) | null][] = [
       ['play', () => playAudioInternal()],
       ['pause', () => stopAndCleanup()],
       ['stop', () => stopAndCleanup()],
+      ['nexttrack', onNext || null],
+      ['previoustrack', onPrev || null],
     ];
 
     for (const [action, handler] of actionHandlers) {
       try {
         navigator.mediaSession.setActionHandler(action, handler);
       } catch (error) {
-        console.warn(`The media session action "${action}" is not supported yet.`);
+        console.warn(`The media session action "${action}" is not supported.`);
       }
     }
 
     return () => {
-      for (const [action] of actionHandlers) {
-        try {
-          navigator.mediaSession.setActionHandler(action, null);
-        } catch {}
+      const actions: MediaSessionAction[] = ['play', 'pause', 'stop', 'nexttrack', 'previoustrack'];
+      for (const action of actions) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch {}
       }
     };
-  }, [playAudioInternal, stopAndCleanup]);
+  }, [playAudioInternal, stopAndCleanup, onNext, onPrev]);
 
   return {
     status,
