@@ -1,9 +1,9 @@
 
-// Build: 2.9.6
-// - UI: Added "Recede & Return" impact effect on cover when toggling play/pause.
-// - UI: Cover now visually "pops" to confirm user action.
-// - UI: Added playback-reactive cover effects (pulse, glow, grayscale).
-// - Fix: Resolved "e.stopPropagation is not a function" by passing real event object.
+// Build: 2.9.7
+// - UI: Removed grayscale/brightness filters.
+// - UI: Added "Recede & Return" impact effect on cover when toggling.
+// - UI: Added gentle pulse animation for the entire cover block during playback.
+// - Fix: Optimized animations to prevent video remounting.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,10 +21,10 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.6";
+const APP_VERSION = "2.9.7";
 
 const MiniEqualizer: React.FC = () => (
-  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+  <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
     <div className="flex gap-1 items-end h-3.5 mb-1">
       <motion.div animate={{ height: [4, 12, 4] }} transition={{ repeat: Infinity, duration: 0.6, ease: "easeInOut" }} className="w-1 bg-white rounded-full" />
       <motion.div animate={{ height: [12, 6, 12] }} transition={{ repeat: Infinity, duration: 0.5, ease: "easeInOut", delay: 0.1 }} className="w-1 bg-white rounded-full" />
@@ -37,9 +37,7 @@ const StationCover: React.FC<{
   station: Station | null | undefined; 
   className?: string; 
   showTags?: boolean;
-  isPlaying?: boolean;
-  isMain?: boolean;
-}> = ({ station, className = "", showTags = true, isPlaying = false, isMain = false }) => {
+}> = ({ station, className = "", showTags = true }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
@@ -68,7 +66,7 @@ const StationCover: React.FC<{
     return (
       <div className="absolute top-4 left-4 z-20 flex flex-wrap gap-1.5 max-w-[80%] pointer-events-none">
         {station.tags.map(tag => (
-          <span key={tag} className="text-[8px] font-black uppercase px-2 py-1 bg-black/50 backdrop-blur-md text-white rounded-lg border border-white/10">
+          <span key={tag} className="text-[8px] font-black uppercase px-2 py-1 bg-black/40 backdrop-blur-md text-white rounded-lg border border-white/10">
             {tag}
           </span>
         ))}
@@ -87,30 +85,8 @@ const StationCover: React.FC<{
     );
   }
 
-  // Эффекты для основной обложки (ЧБ при паузе)
-  const filterStyle = isMain ? {
-    filter: isPlaying ? 'grayscale(0) brightness(1)' : 'grayscale(0.8) brightness(0.6)',
-    transition: 'filter 1.2s cubic-bezier(0.4, 0, 0.2, 1)'
-  } : {};
-
   return (
-    <motion.div 
-      className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}
-      animate={isMain ? {
-        scale: isPlaying ? [1, 1.02, 1] : 1,
-      } : {}}
-      transition={isMain ? {
-        scale: isPlaying ? {
-          repeat: Infinity,
-          duration: 4,
-          ease: "easeInOut"
-        } : {
-          type: "spring",
-          stiffness: 300,
-          damping: 30
-        }
-      } : {}}
-    >
+    <div className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}>
       {renderTags()}
       
       {isVideo ? (
@@ -119,7 +95,6 @@ const StationCover: React.FC<{
           key={`vid-${station.id}`}
           src={station.coverUrl}
           autoPlay muted loop playsInline
-          style={filterStyle}
           initial={{ opacity: 0 }}
           animate={{ opacity: isLoaded ? 1 : 0 }}
           onLoadedData={() => setIsLoaded(true)}
@@ -132,7 +107,6 @@ const StationCover: React.FC<{
           key={`img-${station.id}`}
           src={station.coverUrl}
           alt={station.name}
-          style={filterStyle}
           initial={{ opacity: 0 }}
           animate={{ opacity: isLoaded ? 1 : 0 }}
           onLoad={() => setIsLoaded(true)}
@@ -146,7 +120,7 @@ const StationCover: React.FC<{
           <div className="w-8 h-8 border-4 border-blue-600/20 border-t-blue-600 rounded-full animate-spin" />
         </div>
       )}
-    </motion.div>
+    </div>
   );
 };
 
@@ -244,7 +218,6 @@ export const App: React.FC = () => {
 
   const [onlyFavoritesMode, setOnlyFavoritesMode] = useState<boolean>(() => localStorage.getItem('radio_only_favorites') === 'true');
   const [activeStationId, setActiveStationId] = useState<string>(() => localStorage.getItem('radio_last_active') || '');
-  // Fix: Added missing closing quote to fix syntax error and "Expected 1 arguments, but got 2" error
   const [playingStationId, setPlayingStationId] = useState<string>(() => localStorage.getItem('radio_last_playing') || '');
   const [lastPlayedFavoriteId, setLastPlayedFavoriteId] = useState<string>(() => localStorage.getItem('radio_last_fav') || '');
 
@@ -264,7 +237,6 @@ export const App: React.FC = () => {
   const [sleepTimerEndDate, setSleepTimerEndDate] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   
-  // Ключ для запуска анимации отдачи
   const [actionTrigger, setActionTrigger] = useState(0);
 
   const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(null);
@@ -322,7 +294,7 @@ export const App: React.FC = () => {
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
     
-    // Запускаем анимации отдачи
+    // Запускаем анимацию отдачи
     setActionTrigger(prev => prev + 1);
     
     if (playingStationId === activeStationId) {
@@ -545,56 +517,52 @@ export const App: React.FC = () => {
               {displayedStations.map((station) => (
                 <SwiperSlide key={station.id} className="w-full h-full flex justify-center">
                   <div className="relative w-full aspect-square group" onClick={() => handleTogglePlay()}>
-                    {/* Анимированный Glow (Свечение) */}
-                    <AnimatePresence>
-                      {station.coverUrl && !station.coverUrl.toLowerCase().endsWith('.mp4') && !station.coverUrl.toLowerCase().endsWith('.mov') && (
-                        <motion.div 
-                          key={`glow-${station.id}`}
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ 
-                            opacity: activeStationId === station.id ? (isActuallyPlaying ? 0.7 : 0.2) : 0,
-                            scale: activeStationId === station.id ? (isActuallyPlaying ? [0.95, 1, 0.95] : 0.9) : 0.8,
-                          }}
-                          transition={{
-                            opacity: { duration: 0.6 },
-                            scale: isActuallyPlaying ? { repeat: Infinity, duration: 4, ease: "easeInOut" } : { duration: 0.6 }
-                          }}
-                          className="absolute inset-2 z-0 rounded-[2.5rem] blur-3xl pointer-events-none"
-                          style={{ 
-                            backgroundImage: `url(${station.coverUrl})`,
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center',
-                            filter: 'blur(40px) saturate(1.8)',
-                          }}
-                        />
-                      )}
-                    </AnimatePresence>
-
-                    {/* Main Card с эффектом отдачи (Recede) */}
+                    {/* Анимированный блок обложки (impact + pulse) */}
                     <motion.div 
                       key={`impact-${station.id}-${actionTrigger}`}
                       initial={false}
                       animate={{ 
-                        scale: activeStationId === station.id ? [0.85, 1.02, 1] : 1 
+                        scale: activeStationId === station.id ? [1, 0.92, 1] : 1 
                       }}
                       transition={{ 
-                        duration: 0.5, 
-                        ease: [0.23, 1, 0.32, 1] // Плавный вход, быстрый отскок
+                        duration: 0.35, 
+                        ease: "easeInOut"
                       }}
-                      className="relative z-10 w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-all duration-700" 
-                      style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}
+                      className="relative z-10 w-full h-full"
                     >
-                      <StationCover 
-                        station={station} 
-                        className="w-full h-full" 
-                        isMain={activeStationId === station.id}
-                        isPlaying={isActuallyPlaying}
-                      />
-                      <div className="absolute bottom-6 right-6 z-30" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
-                        <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105 shadow-lg shadow-amber-500/30' : 'bg-black/30 text-white/60'}`}>
-                          {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
-                        </RippleButton>
-                      </div>
+                      <motion.div
+                        animate={(activeStationId === station.id && isActuallyPlaying) ? {
+                          scale: [1, 1.02, 1]
+                        } : {
+                          scale: 1
+                        }}
+                        transition={(activeStationId === station.id && isActuallyPlaying) ? {
+                          repeat: Infinity,
+                          duration: 3,
+                          ease: "easeInOut"
+                        } : {
+                          duration: 0.3
+                        }}
+                        className="w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-colors duration-700"
+                        style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}
+                      >
+                        <StationCover 
+                          station={station} 
+                          className="w-full h-full" 
+                        />
+                        <div className="absolute bottom-6 right-6 z-30" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
+                          <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105 shadow-lg shadow-amber-500/30' : 'bg-black/30 text-white/60'}`}>
+                            {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
+                          </RippleButton>
+                        </div>
+                        <AnimatePresence>
+                          {activeStationId === station.id && isActuallyPlaying && (status === 'playing' || status === 'loading') && (
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                              <MiniEqualizer />
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
                     </motion.div>
                   </div>
                 </SwiperSlide>
