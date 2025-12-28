@@ -1,8 +1,6 @@
 {
-  "name": "Radio Player Mini App",
-  "description": "Telegram Mini App для прослушивания интернет-радио в стиле Flat Material с нативным управлением, поддержкой HLS и эффектом параллакса",
-  "version": "2.2.1",
-  "requestFramePermissions": [
-    "microphone"
-  ]
+  "name": "Mini App Starter",
+  "description": "A clean starter project for Telegram Mini Apps with React 19 and Framer Motion.",
+  "version": "1.0.0",
+  "requestFramePermissions": []
 }

@@ -1,68 +1,24 @@
-
-/* Base styles and Tailwind shadow variables fix */
-:root {
-  --swiper-theme-color: #2563eb;
-  --tw-ring-offset-shadow: 0 0 #0000 !important;
-  --tw-ring-shadow: 0 0 #0000 !important;
-  --tw-shadow: 0 0 #0000 !important;
-  --tw-shadow-colored: 0 0 #0000 !important;
-}
-
 * {
-  transition: background-color 0.4s ease-out, border-color 0.4s ease-out, color 0.4s ease-out;
-  -webkit-tap-highlight-color: transparent;
-  box-shadow: none !important; /* Force remove all utility shadows */
+  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   margin: 0;
   padding: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  background-color: var(--tg-theme-bg-color, #ffffff);
+  color: var(--tg-theme-text-color, #000000);
 }
 
-/* Stylish iOS-like Scrollbar - Ultra clean */
-.stylish-scroll {
-  scrollbar-width: none;
-  scroll-behavior: smooth;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+#root {
+  height: 100vh;
+  width: 100vw;
 }
 
-.stylish-scroll::-webkit-scrollbar {
-  width: 3px !important;
-}
-
-.stylish-scroll::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-
-.stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.1) !important;
-  border-radius: 10px !important;
-  opacity: 0;
-  transition: opacity 0.3s;
-}
-
-.dark .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.1) !important;
-}
-
-.stylish-scroll:hover::-webkit-scrollbar-thumb {
-  opacity: 1;
-}
-
-/* Reorder Item - Absolute Flat Mode */
-.sortable-item {
-  user-select: none;
-  -webkit-user-select: none;
-  -webkit-touch-callout: none;
-  will-change: transform;
-  box-shadow: none !important;
-  touch-action: pan-y;
-}
-
-.sortable-item[data-dragging="true"] {
-  touch-action: none;
-  z-index: 100;
+button {
+  -webkit-tap-highlight-color: transparent;
+  outline: none !important;
 }

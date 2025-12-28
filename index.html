@@ -1,12 +1,10 @@
-
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
-    <!-- App Version 1.9.82 -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Radio Player</title>
-    <script src="https://telegram.org/js/telegram-web-app.js?59"></script>
+    <title>Mini App Starter</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -16,93 +14,44 @@
         }
       }
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest" crossorigin="anonymous"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <!-- Swiper Styles -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css" />
     <style>
         :root {
           --tg-viewport-height: 100vh;
-          --tg-viewport-stable-height: 100vh;
           --tg-safe-top: env(safe-area-inset-top, 0px);
           --tg-safe-bottom: env(safe-area-inset-bottom, 0px);
-          --tg-safe-left: env(safe-area-inset-left, 0px);
-          --tg-safe-right: env(safe-area-inset-right, 0px);
         }
-        html, body { height: 100%; margin: 0; padding: 0; }
+        html, body, #root { 
+          height: 100%; 
+          margin: 0; 
+          padding: 0; 
+          overflow: hidden;
+        }
         body {
-            font-family: 'Roboto', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #222222);
-            height: var(--tg-viewport-height, 100vh);
-            width: 100vw;
-        }
-        #root {
-          height: var(--tg-viewport-height, 100vh);
-          width: 100vw;
-          display: flex;
-          flex-direction: column;
-        }
-        
-        /* Global Focus Reset */
-        *:focus {
-          outline: none !important;
-          box-shadow: none !important;
-        }
-
-        .ripple { position: relative; overflow: hidden; }
-        .ripple::after {
-            content: ""; display: block; position: absolute; width: 100%; height: 100%; top: 0; left: 0;
-            pointer-events: none; background-image: radial-gradient(circle, #000 10%, transparent 10.01%);
-            background-repeat: no-repeat; background-position: 50%; transform: scale(10, 10);
-            opacity: 0; transition: transform .5s, opacity 1s;
-        }
-        .ripple:active::after { transform: scale(0, 0); opacity: .2; transition: 0s; }
-        
-        /* Swiper Fixes */
-        .swiper { width: 100%; height: 100%; overflow: hidden; }
-        .swiper-slide { display: flex; align-items: center; justify-content: center; }
-
-        /* Dark Mode overrides for native scrollbars */
-        .dark ::-webkit-scrollbar {
-          width: 6px;
-        }
-        .dark ::-webkit-scrollbar-thumb {
-          background: #333;
-          border-radius: 10px;
-        }
-        .dark ::-webkit-scrollbar-track {
-          background: transparent;
+            color: var(--tg-theme-text-color, #000000);
+            -webkit-tap-highlight-color: transparent;
         }
     </style>
-<script type="importmap">
+    <script type="importmap">
 {
   "imports": {
-    "url": "https://esm.sh/url@^0.11.4",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
+    "react": "https://esm.sh/react@19.0.0",
+    "react-dom": "https://esm.sh/react-dom@19.0.0",
+    "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
+    "framer-motion": "https://esm.sh/framer-motion@11.11.17?deps=react@19.0.0,react-dom@19.0.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2",
-    "framer-motion": "https://esm.sh/framer-motion@^12.23.26",
+    "react/": "https://esm.sh/react@^19.2.3/",
     "path": "https://esm.sh/path@^0.12.7",
+    "url": "https://esm.sh/url@^0.11.4",
     "vite": "https://esm.sh/vite@^7.3.0",
-    "swiper": "https://esm.sh/swiper@11.1.14",
-    "swiper/react": "https://esm.sh/swiper@11.1.14/react",
-    "swiper/modules": "https://esm.sh/swiper@11.1.14/modules",
-    "swiper/": "https://esm.sh/swiper@^12.0.3/",
-    "@dnd-kit/core": "https://esm.sh/@dnd-kit/core@^6.1.0",
-    "@dnd-kit/sortable": "https://esm.sh/@dnd-kit/sortable@^7.0.0",
-    "@dnd-kit/utilities": "https://esm.sh/@dnd-kit/utilities@^3.2.0"
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
   }
 }
 </script>
-<link rel="stylesheet" href="/index.css">
+    <link rel="stylesheet" href="/index.css">
 </head>
-<body class="bg-[#f5f5f5] dark:bg-[#121212]">
+<body class="bg-white dark:bg-[#1a1a1a]">
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>
