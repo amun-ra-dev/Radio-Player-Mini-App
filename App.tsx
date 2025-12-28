@@ -1,9 +1,10 @@
 
-// Build: 2.9.8
-// - UI: Restored all missing modals (Sleep Timer, Station Editor, Export/Import, Confirm).
-// - UI: Kept "Recede & Return" impact effect on cover toggling.
-// - UI: Kept gentle pulse animation and removed grayscale.
-// - Fix: Full functional restoration of all features.
+// Build: 2.9.9
+// - UI: Tap on station in list now toggles Play/Pause.
+// - UI: Station Editor extended with Home Page and real-time Cover Preview.
+// - UI: Sleep Timer updated with custom input field.
+// - UI: Import/Export now support Clipboard operations.
+// - UI: Inputs use placeholders for hints as requested.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.8";
+const APP_VERSION = "2.9.9";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
@@ -247,6 +248,9 @@ export const App: React.FC = () => {
   const listRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef(0);
 
+  const [editorCoverPreview, setEditorCoverPreview] = useState<string>('');
+  const [customSleepMinutes, setCustomSleepMinutes] = useState<string>('');
+
   const handleTouchStart = (e: React.TouchEvent) => { if (!isPlaylistEditMode) touchStartRef.current = e.touches[0].clientY; };
   const handleTouchEnd = (e: React.TouchEvent) => {
     if (isPlaylistEditMode) return;
@@ -317,6 +321,7 @@ export const App: React.FC = () => {
       setSnackbar(`Таймер установлен на ${minutes} минут`); hapticImpact('light');
     } else { setSleepTimerEndDate(null); setSnackbar('Таймер сна отключен'); if (originalVolumeRef.current !== undefined) setVolume(originalVolumeRef.current); }
     setShowSleepTimerModal(false);
+    setCustomSleepMinutes('');
   }, [stop, hapticNotification, hapticImpact, setVolume, volume]);
 
   useEffect(() => {
@@ -404,45 +409,82 @@ export const App: React.FC = () => {
       try {
         const text = await file.text();
         const data = JSON.parse(text);
-        let newStations: Station[] = [];
-        if (data && data.schemaVersion === 2 && Array.isArray(data.stations)) {
-          newStations = data.stations.map((s: any) => ({ id: s.id || Math.random().toString(36).substr(2, 9), name: s.title || s.name, streamUrl: s.streamUrl, coverUrl: s.coverUrl, tags: s.tags || [], addedAt: Date.now() }));
-        } else if (Array.isArray(data)) {
-          newStations = data.filter((s: any) => s.name && s.streamUrl).map(s => ({ ...s, id: s.id || Math.random().toString(36).substr(2, 9), addedAt: s.addedAt || Date.now() }));
-        }
-        if (newStations.length > 0) {
-          setStations(prev => { const existingUrls = new Set(prev.map(ps => ps.streamUrl)); const uniqueNew = newStations.filter(ns => !existingUrls.has(ns.streamUrl)); return [...prev, ...uniqueNew]; });
-          setSnackbar(`Успешно импортировано: ${newStations.length}`); hapticNotification('success');
-        } else setSnackbar('Нет данных для импорта');
+        processImportData(data);
       } catch (err) { setSnackbar('Ошибка импорта JSON'); hapticNotification('error'); }
     };
     input.click();
   }, [hapticNotification]);
 
+  const handleImportFromClipboard = useCallback(async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const data = JSON.parse(text);
+      processImportData(data);
+    } catch (err) { setSnackbar('Ошибка чтения буфера обмена'); hapticNotification('error'); }
+  }, [hapticNotification]);
+
+  const processImportData = (data: any) => {
+    let newStations: Station[] = [];
+    if (data && data.schemaVersion === 2 && Array.isArray(data.stations)) {
+      newStations = data.stations.map((s: any) => ({ 
+        id: s.id || Math.random().toString(36).substr(2, 9), 
+        name: s.title || s.name, 
+        streamUrl: s.streamUrl, 
+        coverUrl: s.coverUrl, 
+        homepageUrl: s.homepageUrl,
+        tags: s.tags || [], 
+        addedAt: Date.now() 
+      }));
+    } else if (Array.isArray(data)) {
+      newStations = data.filter((s: any) => s.name && s.streamUrl).map(s => ({ ...s, id: s.id || Math.random().toString(36).substr(2, 9), addedAt: s.addedAt || Date.now() }));
+    }
+    if (newStations.length > 0) {
+      setStations(prev => { 
+        const existingUrls = new Set(prev.map(ps => ps.streamUrl)); 
+        const uniqueNew = newStations.filter(ns => !existingUrls.has(ns.streamUrl)); 
+        return [...prev, ...uniqueNew]; 
+      });
+      setSnackbar(`Успешно импортировано: ${newStations.length}`); hapticNotification('success');
+    } else setSnackbar('Нет данных для импорта');
+  };
+
   const handleExport = useCallback(() => {
-    const schema: ExportSchemaV2 = {
-      schemaVersion: 2,
-      appVersion: APP_VERSION,
-      exportedAt: Date.now(),
-      stations: stations.map(s => ({
-        id: s.id,
-        title: s.name,
-        streamUrl: s.streamUrl,
-        coverUrl: s.coverUrl,
-        tags: s.tags,
-        isFavorite: favorites.includes(s.id)
-      }))
-    };
+    const schema = createExportSchema();
     const blob = new Blob([JSON.stringify(schema, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `radio_export_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
-    setSnackbar('Экспорт завершен');
+    setSnackbar('Экспорт в файл завершен');
     hapticImpact('medium');
     setShowExportModal(false);
   }, [stations, favorites, hapticImpact]);
+
+  const handleExportToClipboard = useCallback(() => {
+    const schema = createExportSchema();
+    navigator.clipboard.writeText(JSON.stringify(schema, null, 2))
+      .then(() => {
+        setSnackbar('Скопировано в буфер обмена');
+        hapticImpact('medium');
+        setShowExportModal(false);
+      });
+  }, [stations, favorites, hapticImpact]);
+
+  const createExportSchema = () => ({
+    schemaVersion: 2,
+    appVersion: APP_VERSION,
+    exportedAt: Date.now(),
+    stations: stations.map(s => ({
+      id: s.id,
+      title: s.name,
+      streamUrl: s.streamUrl,
+      coverUrl: s.coverUrl,
+      homepageUrl: s.homepageUrl,
+      tags: s.tags,
+      isFavorite: favorites.includes(s.id)
+    }))
+  });
 
   const closeAllModals = useCallback(() => { 
     setShowEditor(false); 
@@ -453,6 +495,7 @@ export const App: React.FC = () => {
     setShowExportModal(false); 
     setEditingStation(null); 
     setIsPlaylistEditMode(false); 
+    setEditorCoverPreview('');
   }, []);
 
   const toggleMute = useCallback(() => { if (volume > 0) { setVolume(0); setSnackbar('Звук выключен'); hapticImpact('soft'); } else { setVolume(0.5); setSnackbar('Звук включен'); hapticImpact('rigid'); } }, [volume, setVolume, hapticImpact]);
@@ -472,11 +515,32 @@ export const App: React.FC = () => {
   };
 
   const addOrUpdateStation = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault(); const formData = new FormData(e.currentTarget); const name = (formData.get('name') as string).trim(); const url = (formData.get('url') as string).trim(); const coverUrl = (formData.get('coverUrl') as string).trim(); const tagsStr = (formData.get('tags') as string).trim(); const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+    e.preventDefault(); 
+    const formData = new FormData(e.currentTarget); 
+    const name = (formData.get('name') as string).trim(); 
+    const url = (formData.get('url') as string).trim(); 
+    const coverUrl = (formData.get('coverUrl') as string).trim(); 
+    const homepageUrl = (formData.get('homepageUrl') as string).trim();
+    const tagsStr = (formData.get('tags') as string).trim(); 
+    const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(Boolean) : [];
+    
     if (!name || !url) return;
-    if (editingStation) { setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl: coverUrl || s.coverUrl, tags } : s)); setEditingStation(null); setSnackbar('Обновлено'); }
-    else { const id = Math.random().toString(36).substr(2, 9); const s: Station = { id, name, streamUrl: url, coverUrl: coverUrl || `https://picsum.photos/400/400?random=${Math.random()}`, tags, addedAt: Date.now() }; setStations(prev => [...prev, s]); if (!activeStationId) setActiveStationId(id); setSnackbar('Добавлено'); }
-    setShowEditor(false); hapticImpact('light');
+    
+    if (editingStation) { 
+      setStations(prev => prev.map(s => s.id === editingStation.id ? { ...s, name, streamUrl: url, coverUrl, homepageUrl, tags } : s)); 
+      setEditingStation(null); 
+      setSnackbar('Обновлено'); 
+    }
+    else { 
+      const id = Math.random().toString(36).substr(2, 9); 
+      const s: Station = { id, name, streamUrl: url, coverUrl: coverUrl || `https://picsum.photos/400/400?random=${Math.random()}`, homepageUrl, tags, addedAt: Date.now() }; 
+      setStations(prev => [...prev, s]); 
+      if (!activeStationId) setActiveStationId(id); 
+      setSnackbar('Добавлено'); 
+    }
+    setShowEditor(false); 
+    setEditorCoverPreview('');
+    hapticImpact('light');
   };
 
   const nativeAccentColor = themeParams?.button_color || '#2563eb';
@@ -648,16 +712,46 @@ export const App: React.FC = () => {
                 {stationsInPlaylist.length > 0 ? (
                   <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-2 pb-10">
                     {stationsInPlaylist.map(s => (
-                        <ReorderableStationItem key={s.id} station={s} isActive={activeStationId === s.id} isPlaying={playingStationId === s.id} isFavorite={favorites.includes(s.id)} isEditMode={isPlaylistEditMode} status={status} accentColor={nativeAccentColor} destructiveColor={nativeDestructiveColor} hapticImpact={hapticImpact} onSelect={() => { setActiveStationId(s.id); setPlayingStationId(s.id); play(s.streamUrl); }} onToggleFavorite={(e) => toggleFavorite(s.id, e)} onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); }} onDelete={(e) => handleDelete(s.id, e)} />
+                        <ReorderableStationItem 
+                          key={s.id} 
+                          station={s} 
+                          isActive={activeStationId === s.id} 
+                          isPlaying={playingStationId === s.id} 
+                          isFavorite={favorites.includes(s.id)} 
+                          isEditMode={isPlaylistEditMode} 
+                          status={status} 
+                          accentColor={nativeAccentColor} 
+                          destructiveColor={nativeDestructiveColor} 
+                          hapticImpact={hapticImpact} 
+                          onSelect={() => { 
+                            if (playingStationId === s.id && (status === 'playing' || status === 'loading')) {
+                              stop();
+                            } else {
+                              setActiveStationId(s.id); 
+                              setPlayingStationId(s.id); 
+                              if (favorites.includes(s.id)) setLastPlayedFavoriteId(s.id);
+                              play(s.streamUrl); 
+                            }
+                          }} 
+                          onToggleFavorite={(e) => toggleFavorite(s.id, e)} 
+                          onEdit={(e) => { 
+                            e.stopPropagation(); 
+                            setEditingStation(s); 
+                            setEditorCoverPreview(s.coverUrl || '');
+                            setShowEditor(true); 
+                          }} 
+                          onDelete={(e) => handleDelete(s.id, e)} 
+                        />
                     ))}
                   </ReorderGroup>
                 ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-10 font-black opacity-30 text-xl">Плейлист пуст</div>}
                 <div className="mt-8 flex flex-col gap-4 mb-safe pb-16">
-                  {isPlaylistEditMode && <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full p-6 rounded-[2rem] border-2 border-dashed border-black/5 dark:border-white/10 opacity-40 font-black flex items-center justify-center gap-3"><Icons.Add /> Добавить станцию</RippleButton>}
+                  {isPlaylistEditMode && <RippleButton onClick={() => { setEditingStation(null); setEditorCoverPreview(''); setShowEditor(true); }} className="w-full p-6 rounded-[2rem] border-2 border-dashed border-black/5 dark:border-white/10 opacity-40 font-black flex items-center justify-center gap-3"><Icons.Add /> Добавить станцию</RippleButton>}
                   <div className="grid grid-cols-2 gap-2">
-                    <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Import /> Импорт</RippleButton>
-                    <RippleButton onClick={() => setShowExportModal(true)} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Export /> Экспорт</RippleButton>
+                    <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Import /> Из файла</RippleButton>
+                    <RippleButton onClick={handleImportFromClipboard} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Paste /> Из буфера</RippleButton>
                   </div>
+                  <RippleButton onClick={() => setShowExportModal(true)} className="w-full flex items-center justify-center gap-2 p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Export /> Экспорт плейлиста</RippleButton>
                 </div>
               </div>
             </motion.div>
@@ -672,24 +766,46 @@ export const App: React.FC = () => {
         {showEditor && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditor(false)} />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-hidden">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
               <h2 className="text-2xl font-black mb-6">{editingStation ? 'Редактировать' : 'Новая станция'}</h2>
+              
+              {/* Cover Preview Section */}
+              <div className="flex justify-center mb-6">
+                 <div className="w-32 h-32 rounded-2xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10">
+                   {editorCoverPreview ? (
+                      <img src={editorCoverPreview} alt="Preview" className="w-full h-full object-cover" onError={() => setEditorCoverPreview('')} />
+                   ) : (
+                      <Icons.Add className="w-8 h-8 opacity-20" />
+                   )}
+                 </div>
+              </div>
+
               <form onSubmit={addOrUpdateStation} className="space-y-4">
                 <div>
-                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Название</label>
-                  <input name="name" defaultValue={editingStation?.name} required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Название станции</label>
+                  <input name="name" defaultValue={editingStation?.name} placeholder="Напр: Радио Рекорд" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">URL потока</label>
-                  <input name="url" defaultValue={editingStation?.streamUrl} required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Адрес потока (Stream URL)</label>
+                  <input name="url" defaultValue={editingStation?.streamUrl} placeholder="https://..." required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">URL обложки (опц.)</label>
-                  <input name="coverUrl" defaultValue={editingStation?.coverUrl} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Адрес обложки (Cover URL)</label>
+                  <input 
+                    name="coverUrl" 
+                    defaultValue={editingStation?.coverUrl} 
+                    placeholder="https://.../image.jpg"
+                    onChange={(e) => setEditorCoverPreview(e.target.value)}
+                    className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" 
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Домашняя страница</label>
+                  <input name="homepageUrl" defaultValue={editingStation?.homepageUrl} placeholder="https://radiostation.com" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
                 <div>
                   <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Теги (через запятую)</label>
-                  <input name="tags" defaultValue={editingStation?.tags?.join(', ')} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                  <input name="tags" defaultValue={editingStation?.tags?.join(', ')} placeholder="pop, dance, news" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <RippleButton type="button" onClick={() => setShowEditor(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton>
@@ -708,11 +824,35 @@ export const App: React.FC = () => {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSleepTimerModal(false)} />
             <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl">
               <h2 className="text-2xl font-black mb-6 text-center">Таймер сна</h2>
-              <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="grid grid-cols-3 gap-2 mb-4">
                 {[15, 30, 45, 60, 90, 120].map(min => (
-                  <RippleButton key={min} onClick={() => handleSetSleepTimer(min)} className="py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black hover:bg-blue-500 hover:text-white transition-all">{min} мин</RippleButton>
+                  <RippleButton key={min} onClick={() => handleSetSleepTimer(min)} className="py-3 bg-black/5 dark:bg-white/5 rounded-xl font-black hover:bg-blue-500 hover:text-white transition-all text-xs">{min} м</RippleButton>
                 ))}
               </div>
+              
+              <div className="mb-6">
+                <label className="text-[10px] uppercase font-black opacity-40 mb-1 block text-center">Своё время (минуты)</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="number" 
+                    value={customSleepMinutes} 
+                    onChange={(e) => setCustomSleepMinutes(e.target.value)}
+                    placeholder="Введите число..."
+                    className="flex-1 bg-black/5 dark:bg-white/5 rounded-xl px-4 py-3 font-bold outline-none text-center" 
+                  />
+                  <RippleButton 
+                    onClick={() => {
+                      const val = parseInt(customSleepMinutes);
+                      if (!isNaN(val) && val > 0) handleSetSleepTimer(val);
+                    }}
+                    disabled={!customSleepMinutes}
+                    className="px-6 rounded-xl text-white font-black transition-opacity disabled:opacity-20"
+                    style={{ backgroundColor: nativeAccentColor }}
+                  > OK
+                  </RippleButton>
+                </div>
+              </div>
+
               <RippleButton onClick={() => handleSetSleepTimer(0)} className="w-full py-4 text-red-500 bg-red-500/10 rounded-2xl font-black">Отключить таймер</RippleButton>
             </motion.div>
           </div>
@@ -742,10 +882,11 @@ export const App: React.FC = () => {
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowExportModal(false)} />
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl">
               <h2 className="text-2xl font-black mb-4">Экспорт данных</h2>
-              <p className="opacity-60 text-sm mb-6 font-medium">Ваш список станций будет сохранен в JSON файл для последующего импорта.</p>
-              <div className="flex gap-3">
-                <RippleButton onClick={() => setShowExportModal(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton>
-                <RippleButton onClick={handleExport} className="flex-1 py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Скачать</RippleButton>
+              <p className="opacity-60 text-sm mb-6 font-medium">Выберите способ сохранения плейлиста.</p>
+              <div className="space-y-3">
+                <RippleButton onClick={handleExportToClipboard} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black flex items-center justify-center gap-3"><Icons.Copy /> Копировать в буфер</RippleButton>
+                <RippleButton onClick={handleExport} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Export /> Скачать .json файл</RippleButton>
+                <RippleButton onClick={() => setShowExportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton>
               </div>
             </motion.div>
           </div>

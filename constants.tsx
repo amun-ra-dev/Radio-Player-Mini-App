@@ -9,6 +9,7 @@ export const DEFAULT_STATIONS: Station[] = [
     name: 'Eurodance',
     streamUrl: 'https://hls-01-radiorecord.hostingradio.ru/record-eurodance/96/playlist.m3u8',
     coverUrl: 'https://raw.githubusercontent.com/amun-ra-dev/pic/refs/heads/main/Eurodance.jpg',
+    homepageUrl: 'https://www.radiorecord.ru/',
     tags: ['dance', '90s'],
     addedAt: Date.now()
   },
@@ -17,6 +18,7 @@ export const DEFAULT_STATIONS: Station[] = [
     name: 'MDS Station',
     streamUrl: 'https://stream03.pcradio.ru/mdsst_ru_1-hi',
     coverUrl: 'https://raw.githubusercontent.com/amun-ra-dev/pic/refs/heads/main/audiobook.jpg',
+    homepageUrl: 'https://mds-station.com/',
     tags: ['audiobook'],
     addedAt: Date.now()
   },
@@ -25,6 +27,7 @@ export const DEFAULT_STATIONS: Station[] = [
     name: 'Synthwave',
     streamUrl: 'https://hls-01-radiorecord.hostingradio.ru/record-synth/96/playlist.m3u8',
     coverUrl: 'https://raw.githubusercontent.com/amun-ra-dev/pic/refs/heads/main/Synthwave.jpg',
+    homepageUrl: 'https://www.radiorecord.ru/',
     tags: ['synth', 'retro'],
     addedAt: Date.now()
   }
@@ -65,6 +68,8 @@ export const Icons = {
   Drag: ({ className = "w-5 h-5 opacity-30", style }: IconProps) => <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}><path d="M11 18c0 1.1-.9 2-2 2s-2-.9-2-2 .9-2 2-2 2 .9 2 2zm-2-8c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 4c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" /></svg>,
   Help: ({ className = "w-6 h-6", style }: IconProps) => <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 17h-2v-2h2v2zm2.07-7.75l-.9.92C13.45 12.9 13 13.5 13 15h-2v-.5c0-1.1.45-2.1 1.17-2.83l1.24-1.26c.37-.36.59-.86.59-1.41 0-1.1-.9-2-2-2s-2 .9-2 2H8c0-2.21 1.79-4 4-4s4 1.79 4 4c0 .88-.36 1.68-.93 2.25z" /></svg>,
   Timer: ({ className = "w-6 h-6", style }: IconProps) => <svg viewBox="0 0 24 24" fill="none" className={className} style={style}><path d="M9.99998 9.99998H14L9.99998 16H14M3 6L6.5 3M21 6L17.5 3M12 21C16.4183 21 20 17.4183 20 13C20 8.58172 16.4183 5 12 5C7.58172 5 4 8.58172 4 13C4 17.4183 7.58172 21 12 21Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  Copy: ({ className = "w-5 h-5", style }: IconProps) => <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" /></svg>,
+  Paste: ({ className = "w-5 h-5", style }: IconProps) => <svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}><path d="M19 2h-4.18C14.4.84 13.3 0 12 0c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm7 18H5V4h2v3h10V4h2v16z" /></svg>,
   Star: StarMotion,
   StarOutline: StarOutlineMotion
 };

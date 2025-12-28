@@ -4,6 +4,7 @@ export interface Station {
   name: string;
   streamUrl: string;
   coverUrl?: string;
+  homepageUrl?: string;
   tags?: string[];
   addedAt: number;
 }
@@ -25,6 +26,7 @@ export type ExportSchemaV2 = {
     title: string;
     streamUrl: string;
     coverUrl?: string;
+    homepageUrl?: string;
     isFavorite: boolean;
     tags?: string[];
   }>;
