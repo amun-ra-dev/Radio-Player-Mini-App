@@ -1,11 +1,9 @@
 
-// Build: 2.6.5
-// - Feature: Parallax effect removed per user request.
-// - Fix: Aggressive focus removal on Star and other buttons via onFocus event.
-// - UI: Global focus reset in index.html.
-// - Feature: Symmetric swipe transitions.
-// - Feature: Video covers support (.mp4, .mov) with looping.
-// - Feature: Long press to reorder stations, Tap to play/stop.
+// Build: 2.7.0
+// - Feature: Improved Long Press (300ms) for reordering.
+// - UX: Magnetic list transitions using framer-motion layout.
+// - UX: Improved touch-action handling to prevent scroll/drag conflicts.
+// - Feature: Enhanced visual feedback during drag start.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -23,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.6.5";
+const APP_VERSION = "2.7.0";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -164,37 +162,49 @@ interface ReorderItemProps {
 const ReorderableStationItem: React.FC<ReorderItemProps> = ({
   station, isActive, isPlaying, isFavorite, status, accentColor, destructiveColor, onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact
 }) => {
-  const [isReordering, setIsReordering] = useState(false);
   const dragControls = useDragControls();
+  const [isDragging, setIsDragging] = useState(false);
   const longPressTimerRef = useRef<number | null>(null);
+  const isMovedRef = useRef(false);
+  const startPosRef = useRef({ x: 0, y: 0 });
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    // Начало замера времени для Long Press
+    isMovedRef.current = false;
+    startPosRef.current = { x: e.clientX, y: e.clientY };
+
     longPressTimerRef.current = window.setTimeout(() => {
-      setIsReordering(true);
-      hapticImpact('heavy');
-      dragControls.start(e);
-    }, 450); // 450ms для активации режима перемещения
+      if (!isMovedRef.current) {
+        setIsDragging(true);
+        hapticImpact('medium');
+        dragControls.start(e);
+      }
+    }, 300); // 300ms для премиального Long Press
   };
 
-  const handlePointerUp = (e: React.PointerEvent) => {
-    // Если отпустили раньше 450мс — это клик (Play/Stop)
-    if (longPressTimerRef.current) {
-      clearTimeout(longPressTimerRef.current);
-      longPressTimerRef.current = null;
-      if (!isReordering) {
-        onSelect();
+  const handlePointerMove = (e: React.PointerEvent) => {
+    const dist = Math.sqrt(
+      Math.pow(e.clientX - startPosRef.current.x, 2) + 
+      Math.pow(e.clientY - startPosRef.current.y, 2)
+    );
+    if (dist > 10) {
+      isMovedRef.current = true;
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
       }
     }
-    setIsReordering(false);
   };
 
-  const handlePointerCancel = () => {
+  const handlePointerUp = () => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
+      if (!isMovedRef.current) {
+        onSelect();
+        hapticImpact('soft');
+      }
     }
-    setIsReordering(false);
+    setIsDragging(false);
   };
 
   return (
@@ -202,21 +212,26 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       value={station}
       dragControls={dragControls}
       dragListener={false}
-      initial={{ opacity: 0, y: 10 }}
+      layout
+      initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
+      exit={{ opacity: 0, scale: 0.9 }}
       whileDrag={{ 
-        scale: 1.04, 
-        zIndex: 100, 
-        backgroundColor: "var(--tg-theme-secondary-bg-color, #f8f8f8)", 
-        boxShadow: "0 20px 40px rgba(0,0,0,0.12)" 
+        scale: 1.05, 
+        zIndex: 50,
+        backgroundColor: "var(--tg-theme-secondary-bg-color, rgba(0,0,0,0.05))",
+        boxShadow: "0 10px 30px -5px rgba(0,0,0,0.2)"
       }}
-      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-all group relative border-2 select-none touch-none ${isActive ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-white/[0.015] border-transparent'} shadow-sm`}
+      onDragStart={() => setIsDragging(true)}
+      onDragEnd={() => setIsDragging(false)}
+      data-dragging={isDragging}
+      className={`reorder-item flex items-center gap-3 p-3 mb-2 rounded-2xl transition-all duration-300 border ${isActive ? 'bg-blue-50/50 dark:bg-white/[0.06] border-blue-200/50 dark:border-white/20' : 'bg-white/40 dark:bg-white/[0.02] border-transparent'} group relative select-none touch-none`}
       onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerCancel}
+      onPointerCancel={handlePointerUp}
     >
-      <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none">
+      <div className="relative w-11 h-11 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none">
         <StationCover station={station} className="w-full h-full" showTags={false} />
         <AnimatePresence>
           {isPlaying && (status === 'playing' || status === 'loading') && (
@@ -224,25 +239,20 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
           )}
         </AnimatePresence>
       </div>
+      
       <div className="flex-1 min-w-0 pointer-events-none">
-        <p className="font-bold text-base truncate leading-tight dark:text-white/90" style={{ color: isActive ? accentColor : undefined }}>{station.name}</p>
-        <div className="flex items-center gap-1.5 mt-0.5">
-          {station.tags && station.tags.length > 0 && (
-            <div className="flex gap-1">
-              {station.tags.slice(0, 2).map(tag => (
-                <span key={tag} className="text-[7px] font-black uppercase px-1.5 py-0.5 bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-gray-400 rounded-md">{tag}</span>
-              ))}
-            </div>
-          )}
-          <p className="text-[9px] opacity-20 dark:opacity-40 truncate uppercase tracking-wider font-bold dark:text-white">{station.streamUrl}</p>
-        </div>
+        <p className="font-bold text-sm truncate leading-tight dark:text-white/90" style={{ color: isActive ? accentColor : undefined }}>{station.name}</p>
+        <p className="text-[10px] opacity-30 dark:opacity-40 truncate uppercase font-medium mt-0.5">{station.streamUrl.split('/')[2]}</p>
       </div>
-      <div className="flex gap-0.5 ml-auto pr-1">
-        <RippleButton onClick={(e) => { e.stopPropagation(); onToggleFavorite(e); }} className={`p-2.5 rounded-xl ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
-          {isFavorite ? <Icons.Star /> : <Icons.StarOutline />}
+
+      <div className="flex items-center gap-0.5 ml-auto">
+        <RippleButton onClick={(e) => { e.stopPropagation(); onToggleFavorite(e); }} className={`p-2 rounded-lg ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
+          {isFavorite ? <Icons.Star className="w-5 h-5" /> : <Icons.StarOutline className="w-5 h-5" />}
         </RippleButton>
-        <RippleButton onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors" onMouseEnter={(e) => (e.currentTarget.style.color = accentColor)} onMouseLeave={(e) => (e.currentTarget.style.color = '')}><Icons.Settings /></RippleButton>
-        <RippleButton onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="p-2.5 rounded-xl transition-all" style={{ color: 'var(--tg-theme-subtitle-text-color, #999)' }} onMouseEnter={(e) => (e.currentTarget.style.color = destructiveColor)} onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--tg-theme-subtitle-text-color, #999)')}>
+        <RippleButton onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-blue-500 transition-colors">
+          <Icons.Settings className="w-5 h-5" />
+        </RippleButton>
+        <RippleButton onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
         </RippleButton>
       </div>
@@ -1089,9 +1099,9 @@ export const App: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div ref={listRef} className="flex-1 overflow-y-auto px-6 pr-4 flex flex-col overscroll-contain stylish-scroll" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+              <div ref={listRef} className="flex-1 overflow-y-auto px-6 pr-2 flex flex-col overscroll-contain stylish-scroll" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
                 {stationsInPlaylist.length > 0 ? (
-                  <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-2">
+                  <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-1">
                     {stationsInPlaylist.map(s => (
                         <ReorderableStationItem 
                             key={s.id} 

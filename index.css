@@ -27,44 +27,51 @@ body {
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 .dark .stylish-scroll {
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
-/* Webkit-based browsers (Chrome, Safari, Telegram, Android Webview) */
+/* Webkit-based browsers */
 .stylish-scroll::-webkit-scrollbar {
   display: block !important;
-  width: 3px !important;
+  width: 4px !important;
 }
 
 .stylish-scroll::-webkit-scrollbar-track {
   background: transparent !important;
-  margin: 15px 0;
+  margin: 8px 0;
 }
 
 .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.1) !important;
+  background-color: rgba(0, 0, 0, 0.08) !important;
   border-radius: 20px !important;
   transition: background-color 0.3s ease;
 }
 
 .dark .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.1) !important;
+  background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 .stylish-scroll:hover::-webkit-scrollbar-thumb,
 .stylish-scroll:active::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.25) !important;
+  background-color: rgba(0, 0, 0, 0.2) !important;
 }
 
 .dark .stylish-scroll:hover::-webkit-scrollbar-thumb,
 .dark .stylish-scroll:active::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.25) !important;
+  background-color: rgba(255, 255, 255, 0.2) !important;
 }
 
-/* Скрываем скроллбар, когда список не активен (на некоторых браузерах) */
-.stylish-scroll:not(:hover)::-webkit-scrollbar-thumb {
-  background-color: transparent !important;
+/* Prevents system interference with long-press reordering */
+.reorder-item {
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.reorder-item[data-dragging="true"] {
+  touch-action: none;
 }
