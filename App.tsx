@@ -1,9 +1,10 @@
 
-// Build: 2.9.11
+// Build: 2.9.13
+// - UI: Removed equalizer and darkening overlay from main covers (Swiper) during playback.
+// - UI: Added "Empty State" view with options to add station or load demo list.
 // - UI: Full support for JPG, PNG, WEBP, SVG, MOV, MP4 in covers.
-// - UI: Editor preview now correctly displays video covers using StationCover component.
-// - UI: Improved isVideo detection (ignores URL query params).
 // - UI: Labels in Station Editor moved to placeholders.
+// - UI: Sleep Timer with custom input field.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.11";
+const APP_VERSION = "2.9.13";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -619,18 +620,7 @@ export const App: React.FC = () => {
                       className="relative z-10 w-full h-full"
                     >
                       <motion.div
-                        animate={(activeStationId === station.id && isActuallyPlaying) ? {
-                          scale: [1, 1.02, 1]
-                        } : {
-                          scale: 1
-                        }}
-                        transition={(activeStationId === station.id && isActuallyPlaying) ? {
-                          repeat: Infinity,
-                          duration: 3,
-                          ease: "easeInOut"
-                        } : {
-                          duration: 0.3
-                        }}
+                        animate={{ scale: 1 }}
                         className="w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-colors duration-700"
                         style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}
                       >
@@ -640,20 +630,46 @@ export const App: React.FC = () => {
                             {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
                           </RippleButton>
                         </div>
-                        <AnimatePresence>
-                          {activeStationId === station.id && isActuallyPlaying && (status === 'playing' || status === 'loading') && (
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                              <MiniEqualizer />
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
                       </motion.div>
                     </motion.div>
                   </div>
                 </SwiperSlide>
               ))}
             </Swiper>
-          ) : <div className="w-full h-full flex items-center justify-center"><h2 className="opacity-20 text-3xl font-black">Нет станций</h2></div>}
+          ) : (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              className="w-full h-full flex flex-col items-center justify-center text-center p-8 bg-white/30 dark:bg-black/20 backdrop-blur-md rounded-[3rem] border border-white/10"
+            >
+              <div className="mb-6 opacity-30">
+                <Icons.List className="w-16 h-16 mx-auto" />
+              </div>
+              <h2 className="text-2xl font-black mb-2 opacity-80">Плейлист пуст</h2>
+              <p className="text-sm opacity-50 mb-8 font-medium">Добавьте свою станцию или начните с демо-списка</p>
+              
+              <div className="flex flex-col gap-3 w-full">
+                <RippleButton 
+                  onClick={() => { setEditingStation(null); setShowEditor(true); }}
+                  className="w-full py-4 text-white rounded-2xl font-black shadow-lg"
+                  style={{ backgroundColor: nativeAccentColor }}
+                >
+                  + Добавить станцию
+                </RippleButton>
+                
+                <RippleButton 
+                  onClick={() => { 
+                    setStations(DEFAULT_STATIONS); 
+                    setSnackbar('Демо-список загружен'); 
+                    hapticImpact('medium'); 
+                  }}
+                  className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60"
+                >
+                  Загрузить демо-список
+                </RippleButton>
+              </div>
+            </motion.div>
+          )}
         </div>
 
         <div className="w-full max-w-[360px] px-2 z-10 transition-all duration-500">
@@ -662,9 +678,9 @@ export const App: React.FC = () => {
               <div className="text-center w-full px-2 min-h-[50px] flex flex-col justify-center">
                 <AnimatePresence mode="wait">
                   <motion.div key={activeStation?.id || 'none'} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
-                    <h2 className="text-xl font-black truncate leading-tight tracking-tight">{activeStation?.name || 'Пусто'}</h2>
+                    <h2 className="text-xl font-black truncate leading-tight tracking-tight">{activeStation?.name || (hasStations ? '...' : 'Радио')}</h2>
                     <p className="text-[10px] opacity-40 dark:opacity-60 uppercase tracking-[0.3em] font-black mt-1">
-                      {isActuallyPlaying ? (status === 'loading' ? 'Загрузка...' : 'В эфире') : 'Пауза'}
+                      {isActuallyPlaying ? (status === 'loading' ? 'Загрузка...' : 'В эфире') : (hasStations ? 'Пауза' : 'Нет станций')}
                     </p>
                   </motion.div>
                 </AnimatePresence>
@@ -676,7 +692,7 @@ export const App: React.FC = () => {
 
               <div className="w-full flex items-center justify-between px-2">
                 <RippleButton onClick={() => navigateStation('prev')} className={`p-4 transition-all ${displayedStations.length > 1 ? 'opacity-50 hover:opacity-100' : 'opacity-10 pointer-events-none'}`}><Icons.Prev /></RippleButton>
-                <RippleButton onClick={() => handleTogglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl text-white active:scale-90`} style={{ backgroundColor: nativeAccentColor, boxShadow: `0 15px 40px -5px ${nativeAccentColor}77` }}>
+                <RippleButton onClick={() => handleTogglePlay()} disabled={!hasStations} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl text-white active:scale-90 ${!hasStations ? 'opacity-30 grayscale pointer-events-none' : ''}`} style={{ backgroundColor: nativeAccentColor, boxShadow: `0 15px 40px -5px ${nativeAccentColor}77` }}>
                   {isActuallyPlaying ? <Icons.Pause className="w-8 h-8" /> : <Icons.Play className="w-8 h-8 ml-1" />}
                 </RippleButton>
                 <RippleButton onClick={() => navigateStation('next')} className={`p-4 transition-all ${displayedStations.length > 1 ? 'opacity-50 hover:opacity-100' : 'opacity-10 pointer-events-none'}`}><Icons.Next /></RippleButton>
