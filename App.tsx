@@ -1,10 +1,9 @@
 
-// Build: 2.9.32
-// - Fix: Robust keyboard overlap protection with target persistence.
-// - UI: Centered modals with enhanced overflow handling.
-// - UI: Subtle pulse animation for active station cover.
-// - Feature: Background Playback & Media Session API integration.
-// - Feature: M3U and JSON import/export enhancements.
+// Build: 2.9.33
+// - UI: Removed drag handles and gear icons in edit mode.
+// - Interaction: Reordering works by dragging anywhere on the item.
+// - Interaction: Clicking an item in edit mode opens the station editor.
+// - Fix: Robust keyboard overlap protection and handleClearAll.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.32";
+const APP_VERSION = "2.9.33";
 
 const isVideoUrl = (url: string | undefined): boolean => {
   if (!url) return false;
@@ -218,13 +217,10 @@ interface ReorderItemProps {
 const ReorderableStationItem: React.FC<ReorderItemProps> = ({
   station, isActive, isPlaying, isFavorite, isEditMode, status, accentColor, onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact
 }) => {
-  const controls = useDragControls();
-
   return (
     <ReorderItem
       value={station}
       dragListener={isEditMode}
-      dragControls={controls}
       layout
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -232,15 +228,10 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       transition={{ type: "spring", stiffness: 500, damping: 50 }}
       onDragStart={() => hapticImpact('light')}
       whileDrag={{ scale: 1.02, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #f8f8f8)" }}
-      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} shadow-sm select-none`}
+      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer active:scale-[0.98]'} shadow-sm select-none`}
       onClick={(e: React.MouseEvent) => (isEditMode ? onEdit(e) : onSelect())}
     >
-      {isEditMode && (
-        <div className="p-3 cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-600 flex items-center justify-center shrink-0" onPointerDown={(e) => controls.start(e)}>
-          <Icons.Drag className="w-6 h-6" />
-        </div>
-      )}
-      <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none">
+      <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none ml-2">
         <StationCover station={station} className="w-full h-full" showTags={false} showLink={false} />
         <AnimatePresence>
           {isPlaying && (status === 'playing' || status === 'loading') && !isEditMode && (
@@ -266,8 +257,9 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         </RippleButton>
         {isEditMode && (
           <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="flex gap-0.5">
-            <RippleButton onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors hover:text-blue-500"><Icons.Settings /></RippleButton>
-            <RippleButton onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors"><svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg></RippleButton>
+            <RippleButton onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
+            </RippleButton>
           </motion.div>
         )}
       </div>
@@ -568,7 +560,6 @@ export const App: React.FC = () => {
     e.stopPropagation(); setConfirmData({ message: 'Удалить эту станцию?', onConfirm: () => { const filtered = stations.filter(s => s.id !== id); setStations(filtered); setFavorites(prev => prev.filter(fid => fid !== id)); if (playingStationId === id) { setPlayingStationId(''); stop(); } if (activeStationId === id) { if (filtered.length > 0) setActiveStationId(filtered[0].id); else setActiveStationId(''); } hapticImpact('heavy'); setSnackbar('Станция удалена'); setShowConfirmModal(false); } }); setShowConfirmModal(true);
   };
 
-  // Fix: Added missing handleClearAll function to resolve reference error in playlist editor
   const handleClearAll = () => {
     setConfirmData({
       message: 'Очистить весь список станций?',
