@@ -1,9 +1,7 @@
-/* index.css / app.css */
 
 /* Base styles and Tailwind shadow variables fix */
 :root {
   --swiper-theme-color: #2563eb;
-
   --tw-ring-offset-shadow: 0 0 #0000;
   --tw-ring-shadow: 0 0 #0000;
   --tw-shadow: 0 0 #0000;
@@ -12,6 +10,7 @@
 
 * {
   transition: background-color 0.4s ease-out, border-color 0.4s ease-out, color 0.4s ease-out;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -21,54 +20,47 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Stylish Scrollbar for Playlist */
+/* Stylish iOS-like Scrollbar */
 .stylish-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  scrollbar-width: none; /* Firefox */
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-}
-
-.dark .stylish-scroll {
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  overscroll-behavior-y: contain;
 }
 
 .stylish-scroll::-webkit-scrollbar {
-  display: block !important;
   width: 3px !important;
 }
 
 .stylish-scroll::-webkit-scrollbar-track {
   background: transparent !important;
-  margin: 15px 0;
 }
 
 .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.1) !important;
-  border-radius: 20px !important;
-  transition: background-color 0.3s ease;
+  background-color: rgba(0, 0, 0, 0.15) !important;
+  border-radius: 10px !important;
+  opacity: 0;
+  transition: opacity 0.3s;
 }
 
 .dark .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.1) !important;
+  background-color: rgba(255, 255, 255, 0.15) !important;
 }
 
+/* Show scrollbar only when scrolling or hovering */
 .stylish-scroll:hover::-webkit-scrollbar-thumb,
 .stylish-scroll:active::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.25) !important;
+  opacity: 1;
 }
 
-.dark .stylish-scroll:hover::-webkit-scrollbar-thumb,
-.dark .stylish-scroll:active::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.25) !important;
-}
-
-.stylish-scroll:not(:hover)::-webkit-scrollbar-thumb {
-  background-color: transparent !important;
-}
-
-/* Optional: harden vertical scroll feel on touch devices */
-.stylish-scroll {
+/* Prevent text selection and system menus during long press */
+.reorder-item {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   touch-action: pan-y;
+}
+
+.reorder-item[data-dragging="true"] {
+  touch-action: none;
 }
