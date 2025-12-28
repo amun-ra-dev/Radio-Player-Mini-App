@@ -1,8 +1,8 @@
 
-// Build: 2.8.9
-// - UI: Shortened "Edit" button text to "Редак." in playlist header.
-// - Feature: Selective Export (All vs Favorites) with a dedicated modal.
-// - UX: Improved playlist layout consistency.
+// Build: 2.9.0
+// - UI: Removed stream URL from playlist items as requested.
+// - Layout: Streamlined station info (Cover, Name, Tags only).
+// - UX: Maintained smooth reordering, selective export, and edit mode features.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -20,7 +20,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.8.9";
+const APP_VERSION = "2.9.0";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -222,7 +222,6 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
               ))}
             </div>
           )}
-          <p className="text-[9px] opacity-20 dark:opacity-40 truncate uppercase tracking-wider font-bold dark:text-white">{station.streamUrl}</p>
         </div>
       </div>
 
