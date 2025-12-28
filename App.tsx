@@ -1,11 +1,11 @@
 
-// Build: 2.9.17
-// - UI: Replaced harsh flash with a stylish "soft bloom pulse" (radial light burst) for play/pause.
-// - UI: Refined main cover scale animation for better tactile feedback.
+// Build: 2.9.20
+// - Fix: Eliminated cover flickering by removing the remounting key on play/pause.
+// - UI: Replaced flash with "Silk Reflection" (ultra-soft diagonal glass shine).
+// - UI: Refined tactile feedback with organic spring scale (0.965).
 // - UI: Removed headers from Station Editor (Edit/New) for a cleaner look.
 // - UI: Added "Clear All" button to playlist (visible in Edit Mode).
-// - UI: Updated "Export to Clipboard" to include 🤖 @mdsradibot Station List prefix.
-// - UI: Support for JPG, PNG, WEBP, SVG, MOV, MP4 in covers.
+// - UI: Updated "Export to Clipboard" with bot prefix.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -23,7 +23,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.17";
+const APP_VERSION = "2.9.20";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -298,6 +298,8 @@ export const App: React.FC = () => {
 
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
+    
+    // Increment trigger to signal a new animation cycle WITHOUT remounting the div
     setActionTrigger(prev => prev + 1);
     
     if (playingStationId === activeStationId) {
@@ -628,37 +630,40 @@ export const App: React.FC = () => {
               {displayedStations.map((station) => (
                 <SwiperSlide key={station.id} className="w-full h-full flex justify-center">
                   <div className="relative w-full aspect-square group" onClick={() => handleTogglePlay()}>
+                    {/* Organic spring response for tactile feel */}
                     <motion.div 
-                      key={`impact-${station.id}-${actionTrigger}`}
-                      initial={false}
                       animate={{ 
-                        scale: activeStationId === station.id ? [1, 0.94, 1] : 1 
+                        scale: activeStationId === station.id ? [1, 0.965, 1] : 1 
                       }}
                       transition={{ 
-                        duration: 0.4, 
+                        duration: 0.45, 
                         type: "spring",
-                        stiffness: 300,
-                        damping: 20
+                        stiffness: 280,
+                        damping: 18
                       }}
                       className="relative z-10 w-full h-full"
                     >
                       <motion.div
-                        animate={{ scale: 1 }}
                         className="w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-colors duration-700 relative"
                         style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}
                       >
                         <StationCover station={station} className="w-full h-full" />
                         
-                        {/* Stylish Bloom Pulse Effect on Play/Pause */}
-                        {activeStationId === station.id && (
-                          <motion.div
-                            key={`bloom-${actionTrigger}`}
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: [0, 0.5, 0], scale: [0.8, 1.25] }}
-                            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
-                            className="absolute inset-0 bg-[radial-gradient(circle,_rgba(255,255,255,0.8)_0%,_transparent_70%)] pointer-events-none z-40 blur-xl"
-                          />
-                        )}
+                        {/* Silk Reflection Effect - Premium, non-intrusive diagonal shine */}
+                        <AnimatePresence mode="popLayout">
+                          {activeStationId === station.id && (
+                            <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-[2.5rem] z-40">
+                              <motion.div
+                                key={`silk-${actionTrigger}`}
+                                initial={{ x: '-160%', opacity: 0 }}
+                                animate={{ x: '160%', opacity: [0, 0.3, 0] }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.9, ease: [0.33, 1, 0.68, 1] }}
+                                className="absolute inset-0 w-[80%] h-full bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-[35deg] blur-md"
+                              />
+                            </div>
+                          )}
+                        </AnimatePresence>
 
                         <div className="absolute bottom-6 right-6 z-30" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
                           <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105 shadow-lg shadow-amber-500/30' : 'bg-black/30 text-white/60'}`}>
@@ -824,7 +829,6 @@ export const App: React.FC = () => {
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditor(false)} />
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
-              {/* Titles removed per user request */}
               
               {/* Cover Preview Section */}
               <div className="flex justify-center mb-8 mt-4">
