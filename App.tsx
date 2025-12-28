@@ -1,7 +1,8 @@
 
-// Build: 2.9.29
-// - Fix: Keyboard overlap issue in Editor modal.
-// - Feature: Auto-scroll to focused input fields.
+// Build: 2.9.30
+// - Fix: Enhanced Keyboard overlap protection in Editor modal.
+// - Feature: Increased bottom scroll padding for mobile forms.
+// - Feature: Auto-scroll to focused input fields (block: center).
 // - Feature: Background Playback Full Optimization.
 // - Feature: Added Lockscreen/Headphone navigation support (Next/Prev track).
 // - Feature: M3U (#EXTINF) format parsing during import.
@@ -22,7 +23,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.29";
+const APP_VERSION = "2.9.30";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -506,7 +507,7 @@ export const App: React.FC = () => {
           hapticNotification('warning');
         }
       }
-    } catch (err) { setSnackbar('Ошибка доступа к буферу обмена'); hapticNotification('error'); }
+    } catch (err) { setSnackbar('Ошибка доступа к буферма обмена'); hapticNotification('error'); }
   }, [hapticNotification]);
 
   const processImportData = (data: any) => {
@@ -604,10 +605,10 @@ export const App: React.FC = () => {
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
     if (!isMobile) return;
-    // Delay slightly to allow keyboard to finish opening and viewport to resize
+    // Delay slightly to allow keyboard to finish opening and viewport to resize correctly in Telegram
     setTimeout(() => {
       e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 400);
+    }, 450);
   };
 
   const addOrUpdateStation = (e: React.FormEvent<HTMLFormElement>) => {
@@ -791,10 +792,10 @@ export const App: React.FC = () => {
       {/* --- MODALS --- */}
       <AnimatePresence>
         {showEditor && (
-          <div className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center p-6 overflow-hidden">
+          <div className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center p-4 overflow-hidden pt-[var(--tg-safe-top,10px)]">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditor(false)} />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh] no-scrollbar">
-              <div className="flex justify-center mb-8 mt-4"><div className="w-40 h-40 rounded-3xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10 relative">{editorCoverPreview ? <StationCover station={{ name: 'Preview', coverUrl: editorCoverPreview }} className="w-full h-full" showTags={false} showLink={false} /> : <Icons.Add className="w-8 h-8 opacity-20" />}</div></div>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[85vh] no-scrollbar">
+              <div className="flex justify-center mb-6 mt-2"><div className="w-36 h-36 rounded-3xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10 relative">{editorCoverPreview ? <StationCover station={{ name: 'Preview', coverUrl: editorCoverPreview }} className="w-full h-full" showTags={false} showLink={false} /> : <Icons.Add className="w-8 h-8 opacity-20" />}</div></div>
               <form onSubmit={addOrUpdateStation} className="space-y-4">
                 <input name="name" onFocus={handleInputFocus} defaultValue={editingStation?.name} placeholder="Название станции" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 <input name="url" onFocus={handleInputFocus} defaultValue={editingStation?.streamUrl} placeholder="Stream URL" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
@@ -802,7 +803,8 @@ export const App: React.FC = () => {
                 <input name="homepageUrl" onFocus={handleInputFocus} defaultValue={editingStation?.homepageUrl} placeholder="Сайт станции" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 <input name="tags" onFocus={handleInputFocus} defaultValue={editingStation?.tags?.join(', ')} placeholder="Теги" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 <div className="flex gap-3 pt-6"><RippleButton type="button" onClick={() => setShowEditor(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton><RippleButton type="submit" className="flex-1 py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Сохранить</RippleButton></div>
-                <div className="h-20 sm:hidden" /> {/* Extra spacer for mobile keyboard */}
+                {/* Massive bottom spacer to allow extreme scrolling when keyboard is up */}
+                <div className="h-60 sm:hidden" />
               </form>
             </motion.div>
           </div>
