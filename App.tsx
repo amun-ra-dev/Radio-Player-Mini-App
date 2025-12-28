@@ -1,10 +1,9 @@
 
-// Build: 2.9.9
-// - UI: Tap on station in list now toggles Play/Pause.
-// - UI: Station Editor extended with Home Page and real-time Cover Preview.
-// - UI: Sleep Timer updated with custom input field.
-// - UI: Import/Export now support Clipboard operations.
-// - UI: Inputs use placeholders for hints as requested.
+// Build: 2.9.11
+// - UI: Full support for JPG, PNG, WEBP, SVG, MOV, MP4 in covers.
+// - UI: Editor preview now correctly displays video covers using StationCover component.
+// - UI: Improved isVideo detection (ignores URL query params).
+// - UI: Labels in Station Editor moved to placeholders.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +21,14 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.9";
+const APP_VERSION = "2.9.11";
+
+// Helper to detect video format support
+const isVideoUrl = (url: string | undefined): boolean => {
+  if (!url) return false;
+  const cleanUrl = url.split(/[?#]/)[0].toLowerCase();
+  return cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.webm');
+};
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 backdrop-blur-[1px]">
@@ -35,7 +41,7 @@ const MiniEqualizer: React.FC = () => (
 );
 
 const StationCover: React.FC<{ 
-  station: Station | null | undefined; 
+  station: Partial<Station> | null | undefined; 
   className?: string; 
   showTags?: boolean;
 }> = ({ station, className = "", showTags = true }) => {
@@ -43,10 +49,7 @@ const StationCover: React.FC<{
   const [isLoaded, setIsLoaded] = useState(false);
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
 
-  const isVideo = useMemo(() => {
-    const url = station?.coverUrl?.toLowerCase() || '';
-    return url.endsWith('.mp4') || url.endsWith('.mov');
-  }, [station?.coverUrl]);
+  const isVideo = useMemo(() => isVideoUrl(station?.coverUrl), [station?.coverUrl]);
 
   useEffect(() => {
     setHasError(false);
@@ -75,13 +78,11 @@ const StationCover: React.FC<{
     );
   };
 
-  if (!station) return <div className={`${className} bg-blue-600 flex items-center justify-center text-white text-5xl font-black select-none`}>+</div>;
-
-  if (!station.coverUrl || hasError) {
+  if (!station?.coverUrl || hasError) {
     return (
-      <div className={`${className} bg-blue-600 flex items-center justify-center text-white text-7xl font-black select-none`}>
+      <div className={`${className} bg-blue-600 flex items-center justify-center text-white text-5xl font-black select-none relative overflow-hidden`}>
         {renderTags()}
-        {station.name?.charAt(0)?.toUpperCase?.() || 'R'}
+        <span className="text-7xl">{station?.name?.charAt(0)?.toUpperCase?.() || 'R'}</span>
       </div>
     );
   }
@@ -93,7 +94,7 @@ const StationCover: React.FC<{
       {isVideo ? (
         <motion.video
           ref={mediaRef as any}
-          key={`vid-${station.id}`}
+          key={`vid-${station.coverUrl}`}
           src={station.coverUrl}
           autoPlay muted loop playsInline
           initial={{ opacity: 0 }}
@@ -105,9 +106,9 @@ const StationCover: React.FC<{
       ) : (
         <motion.img
           ref={mediaRef as any}
-          key={`img-${station.id}`}
+          key={`img-${station.coverUrl}`}
           src={station.coverUrl}
-          alt={station.name}
+          alt={station.name || 'Cover'}
           initial={{ opacity: 0 }}
           animate={{ opacity: isLoaded ? 1 : 0 }}
           onLoad={() => setIsLoaded(true)}
@@ -769,11 +770,15 @@ export const App: React.FC = () => {
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
               <h2 className="text-2xl font-black mb-6">{editingStation ? 'Редактировать' : 'Новая станция'}</h2>
               
-              {/* Cover Preview Section */}
+              {/* Cover Preview Section - Using StationCover component for accurate preview */}
               <div className="flex justify-center mb-6">
-                 <div className="w-32 h-32 rounded-2xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10">
+                 <div className="w-32 h-32 rounded-3xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10 relative">
                    {editorCoverPreview ? (
-                      <img src={editorCoverPreview} alt="Preview" className="w-full h-full object-cover" onError={() => setEditorCoverPreview('')} />
+                      <StationCover 
+                        station={{ name: 'Preview', coverUrl: editorCoverPreview }} 
+                        className="w-full h-full" 
+                        showTags={false} 
+                      />
                    ) : (
                       <Icons.Add className="w-8 h-8 opacity-20" />
                    )}
@@ -782,30 +787,25 @@ export const App: React.FC = () => {
 
               <form onSubmit={addOrUpdateStation} className="space-y-4">
                 <div>
-                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Название станции</label>
-                  <input name="name" defaultValue={editingStation?.name} placeholder="Напр: Радио Рекорд" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                  <input name="name" defaultValue={editingStation?.name} placeholder="Название станции" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Адрес потока (Stream URL)</label>
-                  <input name="url" defaultValue={editingStation?.streamUrl} placeholder="https://..." required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                  <input name="url" defaultValue={editingStation?.streamUrl} placeholder="Адрес потока (Stream URL)" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Адрес обложки (Cover URL)</label>
                   <input 
                     name="coverUrl" 
                     defaultValue={editingStation?.coverUrl} 
-                    placeholder="https://.../image.jpg"
+                    placeholder="Адрес обложки (Cover URL: jpg, png, webp, svg, mov, mp4)"
                     onChange={(e) => setEditorCoverPreview(e.target.value)}
                     className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" 
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Домашняя страница</label>
-                  <input name="homepageUrl" defaultValue={editingStation?.homepageUrl} placeholder="https://radiostation.com" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                  <input name="homepageUrl" defaultValue={editingStation?.homepageUrl} placeholder="Домашняя страница" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-black opacity-40 mb-1 block">Теги (через запятую)</label>
-                  <input name="tags" defaultValue={editingStation?.tags?.join(', ')} placeholder="pop, dance, news" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                  <input name="tags" defaultValue={editingStation?.tags?.join(', ')} placeholder="Теги (через запятую)" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
                 <div className="flex gap-3 pt-4">
                   <RippleButton type="button" onClick={() => setShowEditor(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton>
@@ -831,13 +831,12 @@ export const App: React.FC = () => {
               </div>
               
               <div className="mb-6">
-                <label className="text-[10px] uppercase font-black opacity-40 mb-1 block text-center">Своё время (минуты)</label>
                 <div className="flex gap-2">
                   <input 
                     type="number" 
                     value={customSleepMinutes} 
                     onChange={(e) => setCustomSleepMinutes(e.target.value)}
-                    placeholder="Введите число..."
+                    placeholder="Минуты"
                     className="flex-1 bg-black/5 dark:bg-white/5 rounded-xl px-4 py-3 font-bold outline-none text-center" 
                   />
                   <RippleButton 
