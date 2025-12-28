@@ -1,11 +1,10 @@
 
-// Build: 2.9.20
-// - Fix: Eliminated cover flickering by removing the remounting key on play/pause.
-// - UI: Replaced flash with "Silk Reflection" (ultra-soft diagonal glass shine).
-// - UI: Refined tactile feedback with organic spring scale (0.965).
-// - UI: Removed headers from Station Editor (Edit/New) for a cleaner look.
-// - UI: Added "Clear All" button to playlist (visible in Edit Mode).
-// - UI: Updated "Export to Clipboard" with bot prefix.
+// Build: 2.9.22
+// - Feature: Dedicated Import Modal (matching Export UI) with source selection.
+// - Feature: Smart JSON extraction from raw text (finds JSON inside messages).
+// - Security: Added strict data validation and sanitization for imports.
+// - Fix: Eliminated cover flickering and refined Silk Reflection effect.
+// - UI: Unified Import/Export modal styles.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -23,13 +22,49 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.20";
+const APP_VERSION = "2.9.22";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
   if (!url) return false;
   const cleanUrl = url.split(/[?#]/)[0].toLowerCase();
   return cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.webm');
+};
+
+// Helper to extract JSON from a string that might contain extra text
+const extractJsonFromText = (text: string): any => {
+  try {
+    // Try direct parse first
+    return JSON.parse(text);
+  } catch (e) {
+    // Try to find a JSON-like structure (between { } or [ ])
+    const firstBrace = text.indexOf('{');
+    const firstBracket = text.indexOf('[');
+    
+    let startIdx = -1;
+    let endChar = '';
+    
+    if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+      startIdx = firstBrace;
+      endChar = '}';
+    } else if (firstBracket !== -1) {
+      startIdx = firstBracket;
+      endChar = ']';
+    }
+
+    if (startIdx !== -1) {
+      const lastIdx = text.lastIndexOf(endChar);
+      if (lastIdx > startIdx) {
+        try {
+          const possibleJson = text.substring(startIdx, lastIdx + 1);
+          return JSON.parse(possibleJson);
+        } catch (err) {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
 };
 
 const MiniEqualizer: React.FC = () => (
@@ -232,6 +267,7 @@ export const App: React.FC = () => {
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [confirmData, setConfirmData] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [editingStation, setEditingStation] = useState<Station | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
@@ -298,8 +334,6 @@ export const App: React.FC = () => {
 
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
-    
-    // Increment trigger to signal a new animation cycle WITHOUT remounting the div
     setActionTrigger(prev => prev + 1);
     
     if (playingStationId === activeStationId) {
@@ -413,9 +447,13 @@ export const App: React.FC = () => {
       if (!file) return;
       try {
         const text = await file.text();
-        const data = JSON.parse(text);
-        processImportData(data);
-      } catch (err) { setSnackbar('Ошибка импорта JSON'); hapticNotification('error'); }
+        const data = extractJsonFromText(text);
+        if (data) {
+          processImportData(data);
+          setShowImportModal(false);
+        }
+        else throw new Error();
+      } catch (err) { setSnackbar('Ошибка чтения JSON файла'); hapticNotification('error'); }
     };
     input.click();
   }, [hapticNotification]);
@@ -423,34 +461,76 @@ export const App: React.FC = () => {
   const handleImportFromClipboard = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
-      const data = JSON.parse(text);
-      processImportData(data);
-    } catch (err) { setSnackbar('Ошибка чтения буфера обмена'); hapticNotification('error'); }
+      const data = extractJsonFromText(text);
+      if (data) {
+        processImportData(data);
+        setShowImportModal(false);
+      } else {
+        setSnackbar('JSON не найден в тексте');
+        hapticNotification('warning');
+      }
+    } catch (err) { setSnackbar('Ошибка доступа к буферу обмена'); hapticNotification('error'); }
   }, [hapticNotification]);
 
   const processImportData = (data: any) => {
-    let newStations: Station[] = [];
+    let newStationsRaw: any[] = [];
+    
+    // Support V2 Schema
     if (data && data.schemaVersion === 2 && Array.isArray(data.stations)) {
-      newStations = data.stations.map((s: any) => ({ 
-        id: s.id || Math.random().toString(36).substr(2, 9), 
+      newStationsRaw = data.stations.map((s: any) => ({ 
+        id: s.id,
         name: s.title || s.name, 
         streamUrl: s.streamUrl, 
         coverUrl: s.coverUrl, 
         homepageUrl: s.homepageUrl,
-        tags: s.tags || [], 
-        addedAt: Date.now() 
+        tags: s.tags,
+        addedAt: s.addedAt
       }));
-    } else if (Array.isArray(data)) {
-      newStations = data.filter((s: any) => s.name && s.streamUrl).map(s => ({ ...s, id: s.id || Math.random().toString(36).substr(2, 9), addedAt: s.addedAt || Date.now() }));
+    } 
+    // Support V1 / Simple Array
+    else if (Array.isArray(data)) {
+      newStationsRaw = data;
     }
-    if (newStations.length > 0) {
+    // Support single object
+    else if (typeof data === 'object' && data !== null && data.name && data.streamUrl) {
+      newStationsRaw = [data];
+    }
+
+    // Safety validation and sanitization
+    const validStations: Station[] = newStationsRaw
+      .filter(s => s && typeof s === 'object' && s.name && s.streamUrl)
+      .map(s => ({
+        id: String(s.id || Math.random().toString(36).substr(2, 9)),
+        name: String(s.name).trim().substring(0, 100),
+        streamUrl: String(s.streamUrl).trim(),
+        coverUrl: s.coverUrl ? String(s.coverUrl).trim() : undefined,
+        homepageUrl: s.homepageUrl ? String(s.homepageUrl).trim() : undefined,
+        tags: Array.isArray(s.tags) ? s.tags.map((t: any) => String(t).trim().substring(0, 20)).filter(Boolean) : [],
+        addedAt: typeof s.addedAt === 'number' ? s.addedAt : Date.now()
+      }))
+      .filter(s => {
+        // Simple URL validation
+        try { new URL(s.streamUrl); return true; } catch { return false; }
+      });
+
+    if (validStations.length > 0) {
       setStations(prev => { 
         const existingUrls = new Set(prev.map(ps => ps.streamUrl)); 
-        const uniqueNew = newStations.filter(ns => !existingUrls.has(ns.streamUrl)); 
+        const uniqueNew = validStations.filter(ns => !existingUrls.has(ns.streamUrl)); 
+        
+        if (uniqueNew.length === 0) {
+          setSnackbar('Все станции уже есть в списке');
+          return prev;
+        }
+
+        setSnackbar(`Добавлено новых станций: ${uniqueNew.length}`); 
+        hapticNotification('success');
         return [...prev, ...uniqueNew]; 
       });
-      setSnackbar(`Успешно импортировано: ${newStations.length}`); hapticNotification('success');
-    } else setSnackbar('Нет данных для импорта');
+    } else {
+      setSnackbar('Не найдено корректных станций');
+      hapticNotification('warning');
+    }
   };
 
   const handleExport = useCallback(() => {
@@ -501,6 +581,7 @@ export const App: React.FC = () => {
     setShowSleepTimerModal(false); 
     setShowAboutModal(false); 
     setShowExportModal(false); 
+    setShowImportModal(false);
     setEditingStation(null); 
     setIsPlaylistEditMode(false); 
     setEditorCoverPreview('');
@@ -508,7 +589,7 @@ export const App: React.FC = () => {
 
   const toggleMute = useCallback(() => { if (volume > 0) { setVolume(0); setSnackbar('Звук выключен'); hapticImpact('soft'); } else { setVolume(0.5); setSnackbar('Звук включен'); hapticImpact('rigid'); } }, [volume, setVolume, hapticImpact]);
 
-  useEffect(() => { const isModalOpen = showEditor || showPlaylist || showConfirmModal || showSleepTimerModal || showAboutModal || showExportModal; setBackButton(isModalOpen, closeAllModals); }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, showExportModal, setBackButton, closeAllModals]);
+  useEffect(() => { const isModalOpen = showEditor || showPlaylist || showConfirmModal || showSleepTimerModal || showAboutModal || showExportModal || showImportModal; setBackButton(isModalOpen, closeAllModals); }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, showExportModal, showImportModal, setBackButton, closeAllModals]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -810,10 +891,9 @@ export const App: React.FC = () => {
                     </div>
                   )}
                   <div className="grid grid-cols-2 gap-2">
-                    <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Import /> Из файла</RippleButton>
-                    <RippleButton onClick={handleImportFromClipboard} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Paste /> Из буфера</RippleButton>
+                    <RippleButton onClick={() => setShowImportModal(true)} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Import /> Импорт</RippleButton>
+                    <RippleButton onClick={() => setShowExportModal(true)} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Export /> Экспорт</RippleButton>
                   </div>
-                  <RippleButton onClick={() => setShowExportModal(true)} className="w-full flex items-center justify-center gap-2 p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Export /> Экспорт плейлиста</RippleButton>
                 </div>
               </div>
             </motion.div>
@@ -928,6 +1008,24 @@ export const App: React.FC = () => {
               <div className="flex gap-4">
                 <RippleButton onClick={() => setShowConfirmModal(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-40">Нет</RippleButton>
                 <RippleButton onClick={confirmData.onConfirm} className="flex-1 py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeDestructiveColor }}>Да</RippleButton>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Import Modal */}
+      <AnimatePresence>
+        {showImportModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowImportModal(false)} />
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl">
+              <h2 className="text-2xl font-black mb-4">Импорт данных</h2>
+              <p className="opacity-60 text-sm mb-6 font-medium">Выберите источник для импорта плейлиста.</p>
+              <div className="space-y-3">
+                <RippleButton onClick={handleImportFromClipboard} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black flex items-center justify-center gap-3"><Icons.Paste /> Вставить из буфера</RippleButton>
+                <RippleButton onClick={handleImport} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Import /> Выбрать .json файл</RippleButton>
+                <RippleButton onClick={() => setShowImportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton>
               </div>
             </motion.div>
           </div>
