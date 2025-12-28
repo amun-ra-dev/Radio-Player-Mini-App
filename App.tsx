@@ -1,7 +1,8 @@
 
-// Build: 2.9.26
+// Build: 2.9.27
 // - Feature: Simplified Data Transfer (Clipboard only).
 // - Feature: Added choice between "Export All" and "Export Favorites".
+// - Feature: Added support for M3U (#EXTINF) format parsing during import.
 // - Feature: JSON in clipboard is wrapped in Markdown code blocks.
 // - Feature: Enhanced Background Playback support with Media Session API.
 // - UI: Refined Modals for Import/Export.
@@ -22,13 +23,45 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.26";
+const APP_VERSION = "2.9.27";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
   if (!url) return false;
   const cleanUrl = url.split(/[?#]/)[0].toLowerCase();
   return cleanUrl.endsWith('.mp4') || cleanUrl.endsWith('.mov') || cleanUrl.endsWith('.webm');
+};
+
+// Helper to parse M3U like text
+const parseM3uText = (text: string): Partial<Station>[] => {
+  const lines = text.split('\n');
+  const stations: Partial<Station>[] = [];
+  let currentName: string | null = null;
+
+  for (let line of lines) {
+    line = line.trim();
+    if (!line) continue;
+    
+    if (line.startsWith('#EXTINF:')) {
+      const commaIndex = line.indexOf(',');
+      if (commaIndex !== -1) {
+        currentName = line.substring(commaIndex + 1).trim();
+      }
+    } else if (!line.startsWith('#')) {
+      // Attempt to treat as URL
+      try {
+        new URL(line);
+        stations.push({
+          name: currentName || line.split('/').pop()?.split('?')[0] || 'Radio Station',
+          streamUrl: line
+        });
+        currentName = null;
+      } catch {
+        // Not a URL, skip
+      }
+    }
+  }
+  return stations;
 };
 
 // Helper to extract JSON from a string that might contain extra text
@@ -451,8 +484,20 @@ export const App: React.FC = () => {
     try {
       const text = await navigator.clipboard.readText();
       const data = extractJsonFromText(text);
-      if (data) { processImportData(data); setShowImportModal(false); }
-      else { setSnackbar('JSON не найден в тексте'); hapticNotification('warning'); }
+      if (data) { 
+        processImportData(data); 
+        setShowImportModal(false); 
+      } else {
+        // Try to parse as M3U/Plain text
+        const parsedStations = parseM3uText(text);
+        if (parsedStations.length > 0) {
+          processImportData(parsedStations);
+          setShowImportModal(false);
+        } else {
+          setSnackbar('Данные не распознаны (нужен JSON или M3U)'); 
+          hapticNotification('warning');
+        }
+      }
     } catch (err) { setSnackbar('Ошибка доступа к буферу обмена'); hapticNotification('error'); }
   }, [hapticNotification]);
 
@@ -763,13 +808,13 @@ export const App: React.FC = () => {
 
       <AnimatePresence>{showConfirmModal && confirmData && <div className="fixed inset-0 z-[100] flex items-center justify-center p-10"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={() => setShowConfirmModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative bg-white dark:bg-[#252525] p-8 rounded-[2.5rem] text-center max-w-xs shadow-2xl"><p className="font-black text-xl mb-6">{confirmData.message}</p><div className="flex gap-4"><RippleButton onClick={() => setShowConfirmModal(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-40">Нет</RippleButton><RippleButton onClick={confirmData.onConfirm} className="flex-1 py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeDestructiveColor }}>Да</RippleButton></div></motion.div></div>}</AnimatePresence>
       
-      {/* Updated Import Modal: Clipboard Only */}
-      <AnimatePresence>{showImportModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowImportModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><h2 className="text-2xl font-black mb-4">Импорт данных</h2><p className="opacity-60 text-sm mb-6 font-medium">Вставьте скопированный список станций из буфера обмена.</p><div className="space-y-3"><RippleButton onClick={handleImportFromClipboard} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Paste /> Вставить из буфера</RippleButton><RippleButton onClick={() => setShowImportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton></div></motion.div></div>}</AnimatePresence>
+      {/* Import Modal: Clipboard Only */}
+      <AnimatePresence>{showImportModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowImportModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><h2 className="text-2xl font-black mb-4">Импорт данных</h2><p className="opacity-60 text-sm mb-6 font-medium">Вставьте скопированный список станций (JSON или M3U) из буфера обмена.</p><div className="space-y-3"><RippleButton onClick={handleImportFromClipboard} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Paste /> Вставить из буфера</RippleButton><RippleButton onClick={() => setShowImportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton></div></motion.div></div>}</AnimatePresence>
       
-      {/* Updated Export Modal: All or Favorites */}
+      {/* Export Modal: All or Favorites */}
       <AnimatePresence>{showExportModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowExportModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><h2 className="text-2xl font-black mb-4">Экспорт в буфер</h2><p className="opacity-60 text-sm mb-6 font-medium">Выберите, какие станции скопировать в буфер обмена.</p><div className="space-y-3"><RippleButton onClick={() => handleExportToClipboard('all')} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Copy /> Все станции</RippleButton><RippleButton onClick={() => handleExportToClipboard('favorites')} disabled={!hasFavorites} className={`w-full py-4 bg-amber-500 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3 disabled:opacity-20`}><Icons.Star /> Только избранное</RippleButton><RippleButton onClick={() => setShowExportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton></div></motion.div></div>}</AnimatePresence>
       
-      <AnimatePresence>{showAboutModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAboutModal(false)} /><motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><Logo className="w-16 h-16 mx-auto mb-4" style={{ color: nativeAccentColor }} /><h2 className="text-2xl font-black mb-1">Radio Player</h2><p className="opacity-40 text-[10px] font-black uppercase tracking-widest mb-6">v{APP_VERSION}</p><div className="space-y-4 text-left bg-black/5 dark:bg-white/5 p-4 rounded-2xl text-xs font-medium opacity-80 mb-6"><p>• Копирование: Все / Избранное</p><p>• Фоновый режим (MediaSession API)</p><p>• Тёмная и светлая темы</p><p>• Таймер сна и избранное</p></div><RippleButton onClick={() => setShowAboutModal(false)} className="w-full py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Закрыть</RippleButton></motion.div></div>}</AnimatePresence>
+      <AnimatePresence>{showAboutModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAboutModal(false)} /><motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><Logo className="w-16 h-16 mx-auto mb-4" style={{ color: nativeAccentColor }} /><h2 className="text-2xl font-black mb-1">Radio Player</h2><p className="opacity-40 text-[10px] font-black uppercase tracking-widest mb-6">v{APP_VERSION}</p><div className="space-y-4 text-left bg-black/5 dark:bg-white/5 p-4 rounded-2xl text-xs font-medium opacity-80 mb-6"><p>• Копирование: Все / Избранное</p><p>• Парсинг M3U (#EXTINF)</p><p>• Фоновый режим (MediaSession API)</p><p>• Тёмная и светлая темы</p></div><RippleButton onClick={() => setShowAboutModal(false)} className="w-full py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Закрыть</RippleButton></motion.div></div>}</AnimatePresence>
       <AnimatePresence>{snackbar && <motion.div initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 60 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-black/95 text-white px-8 py-5 rounded-[2.5rem] font-bold shadow-2xl">{snackbar}</motion.div>}</AnimatePresence>
     </div>
   );
