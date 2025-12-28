@@ -1,16 +1,38 @@
 
 // App.tsx
-// Build: 2.7.3
-// - UX: Ultra-flat reordering mode (Zero Shadows, Zero Scale).
-// - Design: Use background tint instead of elevation to indicate dragging.
-// - Performance: Increased spring stiffness for more responsive list snapping.
-// - Clean: Removed all shadow-related logic from reorder items.
+// Build: 2.7.4
+// - Pattern: iOS-like reorder (Normal vs Edit modes).
+// - Logic: Drag allowed ONLY via handle "≡" in Edit mode.
+// - Design: Absolute Flat (Zero Shadows, Zero Scale).
+// - Library: Integrated dnd-kit for robust touch gesture handling.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCreative, Keyboard } from 'swiper/modules';
 import type { Swiper as SwiperClass } from 'swiper';
+
+// dnd-kit components
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  MeasuringStrategy,
+  defaultDropAnimationSideEffects,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  arrayMove,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 import { Station, PlayerStatus, ExportSchemaV2 } from './types.ts';
 import { DEFAULT_STATIONS, Icons } from './constants.tsx';
@@ -19,10 +41,7 @@ import { useAudio } from './hooks/useAudio.ts';
 import { RippleButton } from './components/UI/RippleButton.tsx';
 import { Logo } from './components/UI/Logo.tsx';
 
-const ReorderGroup = Reorder.Group as any;
-const ReorderItem = Reorder.Item as any;
-
-const APP_VERSION = "2.7.3";
+const APP_VERSION = "2.7.4";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -145,106 +164,52 @@ const StationCover: React.FC<{
   );
 };
 
-interface ReorderItemProps {
+interface SortableItemProps {
   station: Station;
   isActive: boolean;
   isPlaying: boolean;
   isFavorite: boolean;
   status: PlayerStatus;
   accentColor: string;
-  destructiveColor: string;
+  editMode: boolean;
   onSelect: () => void;
   onEdit: (e: React.MouseEvent) => void;
   onDelete: (e: React.MouseEvent) => void;
   onToggleFavorite: (e: React.MouseEvent) => void;
-  hapticImpact: (style?: any) => void;
-  onCommitReorder?: () => void;
 }
 
-const ReorderableStationItem: React.FC<ReorderItemProps> = ({
-  station, isActive, isPlaying, isFavorite, status, accentColor, destructiveColor,
-  onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact, onCommitReorder
+const SortableStationItem: React.FC<SortableItemProps> = ({
+  station, isActive, isPlaying, isFavorite, status, accentColor, editMode,
+  onSelect, onEdit, onDelete, onToggleFavorite
 }) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const dragControls = useDragControls();
-  
-  const timerRef = useRef<number | null>(null);
-  const startPosRef = useRef({ x: 0, y: 0 });
-  const isMovedRef = useRef(false);
-  const isLongPressedRef = useRef(false);
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: station.id });
 
-  const handlePointerDown = (e: React.PointerEvent) => {
-    if ((e.target as HTMLElement).closest('[data-no-drag]')) return;
-
-    isMovedRef.current = false;
-    isLongPressedRef.current = false;
-    startPosRef.current = { x: e.clientX, y: e.clientY };
-
-    timerRef.current = window.setTimeout(() => {
-      if (!isMovedRef.current) {
-        isLongPressedRef.current = true;
-        setIsDragging(true);
-        hapticImpact('heavy');
-        dragControls.start(e);
-      }
-    }, 280); 
-  };
-
-  const handlePointerMove = (e: React.PointerEvent) => {
-    const dist = Math.sqrt(
-      Math.pow(e.clientX - startPosRef.current.x, 2) + 
-      Math.pow(e.clientY - startPosRef.current.y, 2)
-    );
-    
-    if (dist > 8) {
-      isMovedRef.current = true;
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    }
-  };
-
-  const handlePointerUp = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-
-    if (!isMovedRef.current && !isLongPressedRef.current) {
-      onSelect();
-    }
-    
-    setIsDragging(false);
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 'auto',
   };
 
   return (
-    <ReorderItem
-      value={station}
-      dragControls={dragControls}
-      dragListener={false}
-      layout="position"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ type: 'spring', stiffness: 600, damping: 50 }}
-      whileDrag={{ 
-        scale: 1, // No scale for pure flat look
-        zIndex: 100,
-        backgroundColor: `${accentColor}1A`, // Subtle theme tint (10% opacity)
-        borderColor: accentColor,
-        boxShadow: "none" 
-      }}
-      onDragEnd={() => {
-        setIsDragging(false);
-        onCommitReorder?.();
-      }}
-      data-dragging={isDragging}
-      className={`reorder-item flex items-center gap-3 p-3 mb-1 rounded-2xl transition-colors border-2 ${isActive ? 'bg-blue-50/50 dark:bg-white/[0.06] border-blue-200/50 dark:border-white/20' : 'bg-white/40 dark:bg-white/[0.02] border-transparent'} group relative select-none touch-none`}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-3 p-3 mb-1 rounded-2xl transition-colors border-2 select-none ${
+        isDragging 
+          ? 'bg-blue-100/20 dark:bg-white/10 border-blue-400 dark:border-white/40' 
+          : isActive 
+            ? 'bg-blue-50/50 dark:bg-white/[0.06] border-blue-200/50 dark:border-white/20' 
+            : 'bg-white/40 dark:bg-white/[0.02] border-transparent hover:bg-black/5 dark:hover:bg-white/5'
+      }`}
+      onClick={() => !editMode && onSelect()}
     >
       <div className="relative w-11 h-11 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none">
         <StationCover station={station} className="w-full h-full" showTags={false} />
@@ -261,17 +226,35 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       </div>
 
       <div className="flex items-center gap-0.5 ml-auto" data-no-drag>
-        <RippleButton onClick={(e) => { e.stopPropagation(); onToggleFavorite(e); }} className={`p-2 rounded-lg transition-colors ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
-          {isFavorite ? <Icons.Star className="w-4 h-4" /> : <Icons.StarOutline className="w-4 h-4" />}
-        </RippleButton>
-        <RippleButton onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-blue-500 transition-colors">
-          <Icons.Settings className="w-4 h-4" />
-        </RippleButton>
-        <RippleButton onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
-        </RippleButton>
+        {!editMode ? (
+          <>
+            <RippleButton onClick={onToggleFavorite} className={`p-2 rounded-lg transition-colors ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
+              {isFavorite ? <Icons.Star className="w-4 h-4" /> : <Icons.StarOutline className="w-4 h-4" />}
+            </RippleButton>
+            <RippleButton onClick={onEdit} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-blue-500 transition-colors">
+              <Icons.Settings className="w-4 h-4" />
+            </RippleButton>
+          </>
+        ) : (
+          <RippleButton onClick={onDelete} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
+          </RippleButton>
+        )}
       </div>
-    </ReorderItem>
+
+      {/* iOS-like: Drag handle ≡ available only in Edit Mode */}
+      <div
+        ref={setActivatorNodeRef}
+        {...(editMode ? listeners : {})}
+        {...(editMode ? attributes : {})}
+        className={`w-10 h-10 rounded-xl flex items-center justify-center font-black transition-opacity ${
+          editMode ? 'opacity-40 hover:opacity-100 cursor-grab active:cursor-grabbing active:scale-110' : 'opacity-0 pointer-events-none'
+        }`}
+        style={{ touchAction: 'none' }}
+      >
+        ≡
+      </div>
+    </div>
   );
 };
 
@@ -296,6 +279,7 @@ export const App: React.FC = () => {
 
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [playlistFilter, setPlaylistFilter] = useState<'all' | 'favorites'>('all');
+  const [playlistEditMode, setPlaylistEditMode] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [showManualImport, setShowManualImport] = useState(false);
   const [manualImportValue, setManualImportValue] = useState('');
@@ -319,12 +303,26 @@ export const App: React.FC = () => {
   const sleepTimerTimeoutRef = useRef<number | null>(null);
   const originalVolumeRef = useRef<number>(0.5);
   const isFadingOutRef = useRef<boolean>(false);
-  const dragControls = useDragControls();
+  
   const listRef = useRef<HTMLDivElement>(null);
   const touchStartRef = useRef(0);
 
-  const handleTouchStart = (e: React.TouchEvent) => { touchStartRef.current = e.touches[0].clientY; };
+  // dnd-kit sensors
+  const sensors = useSensors(
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 150, tolerance: 8 }, // Long press like behavior for touch
+    }),
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
+
+  const handleTouchStart = (e: React.TouchEvent) => { 
+    if (playlistEditMode) return; // Disable pull-to-close in edit mode
+    touchStartRef.current = e.touches[0].clientY; 
+  };
   const handleTouchEnd = (e: React.TouchEvent) => {
+    if (playlistEditMode) return;
     const touchEnd = e.changedTouches[0].clientY;
     const distance = touchEnd - touchStartRef.current;
     if (distance > 70 && listRef.current && listRef.current.scrollTop <= 0) setShowPlaylist(false);
@@ -560,7 +558,7 @@ export const App: React.FC = () => {
   const closeAllModals = useCallback(() => {
     setShowEditor(false); setShowPlaylist(false); setShowConfirmModal(false);
     setShowSleepTimerModal(false); setShowAboutModal(false); setShowManualImport(false);
-    setEditingStation(null);
+    setEditingStation(null); setPlaylistEditMode(false);
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -867,32 +865,23 @@ export const App: React.FC = () => {
   }, [displayedStations, activeStationId]);
 
   // =========================
-  // Playlist smooth reorder model
+  // dnd-kit logic for iOS Reorder
   // =========================
-  const [playlistView, setPlaylistView] = useState<Station[]>([]);
-  const playlistViewRef = useRef<Station[]>([]);
-  useEffect(() => { playlistViewRef.current = playlistView; }, [playlistView]);
+  const handleDragStart = (e: DragStartEvent) => {
+    hapticImpact('heavy');
+  };
 
-  useEffect(() => {
-    if (!showPlaylist) return;
-    setPlaylistView(stationsInPlaylist);
-  }, [showPlaylist, playlistFilter, stationsInPlaylist]);
-
-  const commitPlaylistReorder = useCallback(() => {
-    const reorderedSubset = playlistViewRef.current;
-    const subsetIds = new Set(reorderedSubset.map(s => s.id));
-
-    setStations(prev => {
-      let idx = 0;
-      return prev.map(item => {
-        if (!subsetIds.has(item.id)) return item;
-        const next = reorderedSubset[idx++];
-        return next || item;
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (over && active.id !== over.id) {
+      setStations((prev) => {
+        const oldIndex = prev.findIndex((s) => s.id === active.id);
+        const newIndex = prev.findIndex((s) => s.id === over.id);
+        return arrayMove(prev, oldIndex, newIndex);
       });
-    });
-
-    hapticImpact('light');
-  }, [hapticImpact]);
+      hapticImpact('light');
+    }
+  };
 
   return (
     <div className="flex flex-col overflow-hidden transition-colors duration-500" style={{ height: 'var(--tg-viewport-height, 100vh)', color: nativeTextColor, backgroundColor: nativeBgColor }}>
@@ -1081,40 +1070,48 @@ export const App: React.FC = () => {
           <>
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/75 z-30 backdrop-blur-xl" onClick={closeAllModals} />
             <motion.div
-              drag="y"
-              dragListener={false}
-              dragControls={dragControls}
-              dragDirectionLock
-              dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={{ top: 0, bottom: 1 }}
-              dragMomentum={false}
-              onDragEnd={(_, info) => (info.offset.y > 100 || info.velocity.y > 500) && setShowPlaylist(false)}
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', bounce: 0, duration: 0.5 }}
               className="fixed bottom-0 left-0 right-0 h-[92vh] bg-white/95 dark:bg-black/60 rounded-t-[3.5rem] z-40 flex flex-col overflow-hidden pb-10 border-t border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[80px]"
             >
-              <div className="w-full flex flex-col items-center pt-6 pb-4 shrink-0 touch-none cursor-grab active:cursor-grabbing" onPointerDown={(e) => dragControls.start(e)}>
+              <div className="w-full flex flex-col items-center pt-6 pb-4 shrink-0 touch-none cursor-grab active:cursor-grabbing">
                 <div className="w-20 h-1.5 bg-black/10 dark:bg-white/10 rounded-full mb-3" />
               </div>
 
               <div className="px-6 pb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-xl font-black tracking-tight">Плейлист</h3>
+                  <RippleButton 
+                    onClick={() => {
+                      setPlaylistEditMode(!playlistEditMode);
+                      hapticImpact('medium');
+                    }}
+                    className={`px-4 py-2 rounded-full font-black text-sm transition-all border ${
+                      playlistEditMode ? 'text-white' : ''
+                    }`}
+                    style={{ 
+                      backgroundColor: playlistEditMode ? nativeAccentColor : 'transparent',
+                      borderColor: nativeAccentColor,
+                      color: playlistEditMode ? '#fff' : nativeAccentColor
+                    }}
+                  >
+                    {playlistEditMode ? 'Готово' : 'Править'}
+                  </RippleButton>
+                </div>
+                
                 <div className="flex items-center bg-black/5 dark:bg-white/[0.04] rounded-[1.25rem] p-1.5 backdrop-blur-xl border border-white/5 transition-colors">
                   <button 
-                    onPointerDown={(e) => e.currentTarget.blur()}
-                    onFocus={(e) => e.currentTarget.blur()}
-                    onClick={(e) => { e.currentTarget.blur(); setPlaylistFilter('all'); }} 
-                    className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all focus:outline-none focus:ring-0 ${playlistFilter === 'all' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} 
+                    onClick={() => setPlaylistFilter('all')} 
+                    className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all ${playlistFilter === 'all' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} 
                     style={{ color: playlistFilter === 'all' ? nativeAccentColor : undefined }}
                   >
-                    Все станции
+                    Все
                   </button>
                   <button 
-                    onPointerDown={(e) => e.currentTarget.blur()}
-                    onFocus={(e) => e.currentTarget.blur()}
-                    onClick={(e) => { e.currentTarget.blur(); setPlaylistFilter('favorites'); }} 
-                    className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all focus:outline-none focus:ring-0 ${playlistFilter === 'favorites' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} 
+                    onClick={() => setPlaylistFilter('favorites')} 
+                    className={`flex-1 py-3 text-sm font-black rounded-[1rem] transition-all ${playlistFilter === 'favorites' ? 'bg-white dark:bg-white/10 shadow-sm' : 'opacity-50'}`} 
                     style={{ color: playlistFilter === 'favorites' ? nativeAccentColor : undefined }}
                   >
                     Избранное
@@ -1127,49 +1124,63 @@ export const App: React.FC = () => {
                 className="flex-1 overflow-y-auto px-6 pr-2 flex flex-col overscroll-contain stylish-scroll"
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
-                style={{ touchAction: 'pan-y', WebkitOverflowScrolling: 'touch' }}
+                style={{ WebkitOverflowScrolling: 'touch' }}
               >
-                {playlistView.length > 0 ? (
-                  <ReorderGroup
-                    axis="y"
-                    values={playlistView}
-                    onReorder={setPlaylistView}
-                    className="space-y-0.5"
+                {stationsInPlaylist.length > 0 ? (
+                  <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={handleDragStart}
+                    onDragEnd={handleDragEnd}
+                    measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
                   >
-                    {playlistView.map(s => (
-                      <ReorderableStationItem 
-                        key={s.id} 
-                        station={s} 
-                        isActive={activeStationId === s.id} 
-                        isPlaying={playingStationId === s.id}
-                        isFavorite={favorites.includes(s.id)} 
-                        status={status} 
-                        accentColor={nativeAccentColor}
-                        destructiveColor={nativeDestructiveColor}
-                        hapticImpact={hapticImpact} 
-                        onCommitReorder={commitPlaylistReorder}
-                        onSelect={() => handleSelectStation(s)} 
-                        onToggleFavorite={(e) => toggleFavorite(s.id, e)} 
-                        onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); setShowPlaylist(false); }} 
-                        onDelete={(e) => handleDelete(s.id, e)} 
-                      />
-                    ))}
-                  </ReorderGroup>
+                    <SortableContext
+                      items={stationsInPlaylist.map(s => s.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="space-y-0.5">
+                        {stationsInPlaylist.map(s => (
+                          <SortableStationItem 
+                            key={s.id} 
+                            station={s} 
+                            isActive={activeStationId === s.id} 
+                            isPlaying={playingStationId === s.id}
+                            isFavorite={favorites.includes(s.id)} 
+                            status={status} 
+                            accentColor={nativeAccentColor}
+                            editMode={playlistEditMode}
+                            onSelect={() => handleSelectStation(s)} 
+                            onToggleFavorite={(e) => toggleFavorite(s.id, e)} 
+                            onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); }} 
+                            onDelete={(e) => handleDelete(s.id, e)} 
+                          />
+                        ))}
+                      </div>
+                    </SortableContext>
+                  </DndContext>
                 ) : (
                   <div className="flex-1 flex flex-col items-center justify-center text-center p-10">
                     <h3 className="text-xl font-black opacity-30">{playlistFilter === 'favorites' ? 'Нет избранных' : 'Плейлист пуст'}</h3>
                   </div>
                 )}
 
-                <div className="mt-8 flex flex-col gap-4 mb-safe pb-16">
-                  <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); setShowPlaylist(false); }} className="w-full p-6 rounded-[2rem] border-2 border-dashed border-black/5 dark:border-white/10 opacity-40 hover:opacity-100 font-black flex items-center justify-center gap-3 transition-all hover:bg-black/5 dark:hover:bg-white/5 shadow-sm focus:outline-none focus:ring-0 focus-visible:ring-0"><Icons.Add /> Добавить станцию</RippleButton>
-                  
-                  <div className="grid grid-cols-3 gap-2">
-                    <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60 transition-all hover:opacity-100 border border-transparent dark:border-white/5 focus:outline-none focus:ring-0 focus-visible:ring-0"><Icons.Import /> <span className="mt-1">Импорт</span></RippleButton>
-                    <RippleButton onClick={handleExport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60 transition-all hover:opacity-100 border border-transparent dark:border-white/5 focus:outline-none focus:ring-0 focus-visible:ring-0"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
-                    <RippleButton onClick={handleReset} className="flex flex-col items-center justify-center p-4 bg-white/50 dark:bg-white/5 rounded-2xl text-[10px] font-black transition-all border border-transparent shadow-sm focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ color: nativeDestructiveColor, borderColor: `${nativeDestructiveColor}33`, boxShadow: `0 4px 15px -5px ${nativeDestructiveColor}44` }} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `${nativeDestructiveColor}1a`)} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '')}><Icons.Reset style={{ color: nativeDestructiveColor }} /> <span className="mt-1">Сброс</span></RippleButton>
+                {!playlistEditMode && (
+                  <div className="mt-8 flex flex-col gap-4 mb-safe pb-16">
+                    <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full p-6 rounded-[2rem] border-2 border-dashed border-black/5 dark:border-white/10 opacity-40 hover:opacity-100 font-black flex items-center justify-center gap-3 transition-all hover:bg-black/5 dark:hover:bg-white/5"><Icons.Add /> Добавить станцию</RippleButton>
+                    
+                    <div className="grid grid-cols-3 gap-2">
+                      <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60 transition-all hover:opacity-100 border border-transparent dark:border-white/5"><Icons.Import /> <span className="mt-1">Импорт</span></RippleButton>
+                      <RippleButton onClick={handleExport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60 transition-all hover:opacity-100 border border-transparent dark:border-white/5"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
+                      <RippleButton onClick={handleReset} className="flex flex-col items-center justify-center p-4 bg-white/50 dark:bg-white/5 rounded-2xl text-[10px] font-black transition-all border border-transparent shadow-sm" style={{ color: nativeDestructiveColor, borderColor: `${nativeDestructiveColor}33` }}><Icons.Reset style={{ color: nativeDestructiveColor }} /> <span className="mt-1">Сброс</span></RippleButton>
+                    </div>
                   </div>
-                </div>
+                )}
+                
+                {playlistEditMode && (
+                  <div className="mt-6 text-[10px] font-black uppercase tracking-[0.25em] opacity-30 px-1 text-center">
+                    Тяните за ≡ чтобы упорядочить
+                  </div>
+                )}
               </div>
             </motion.div>
           </>
@@ -1187,7 +1198,7 @@ export const App: React.FC = () => {
                 <p className="text-[11px] font-black opacity-30 dark:opacity-40 uppercase tracking-[0.4em] mt-1">Build {APP_VERSION}</p>
               </div>
               <div className="text-[13px] font-bold opacity-60 text-center mb-8 px-6 leading-relaxed">Премиальный плеер с интеллектуальной дедупликацией при импорте.</div>
-              <RippleButton onClick={closeAllModals} className="w-full py-5 text-white rounded-[1.5rem] font-black shadow-2xl transition-transform active:scale-95 focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ backgroundColor: nativeAccentColor, boxShadow: `0 10px 30px -5px ${nativeAccentColor}66` }}>Закрыть</RippleButton>
+              <RippleButton onClick={closeAllModals} className="w-full py-5 text-white rounded-[1.5rem] font-black shadow-2xl transition-transform active:scale-95" style={{ backgroundColor: nativeAccentColor, boxShadow: `0 10px 30px -5px ${nativeAccentColor}66` }}>Закрыть</RippleButton>
             </motion.div>
           </div>
         )}
@@ -1202,8 +1213,8 @@ export const App: React.FC = () => {
               <p className="text-xs opacity-50 text-center mb-6 font-bold">Вставьте JSON-код вашего плейлиста в поле ниже</p>
               <textarea value={manualImportValue} onChange={(e) => setManualImportValue(e.target.value)} placeholder='{ "stations": [...] }' className="w-full h-48 bg-black/5 dark:bg-white/5 rounded-[1.5rem] p-4 outline-none font-mono text-[10px] focus:ring-2 focus:ring-current transition-all mb-6 resize-none border dark:border-white/10" style={{ caretColor: nativeAccentColor }} />
               <div className="flex gap-4">
-                <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-black/5 dark:bg-white/5 opacity-60 rounded-2xl font-black text-sm focus:outline-none focus:ring-0 focus-visible:ring-0">Отмена</RippleButton>
-                <RippleButton onClick={() => processImportText(manualImportValue, true)} disabled={!manualImportValue.trim()} className={`flex-1 py-4 text-white rounded-2xl font-black text-sm shadow-xl transition-all focus:outline-none focus:ring-0 focus-visible:ring-0 ${!manualImportValue.trim() && 'opacity-50 pointer-events-none'}`} style={{ backgroundColor: nativeAccentColor, boxShadow: `0 10px 30px -5px ${nativeAccentColor}66` }}>Импорт</RippleButton>
+                <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-black/5 dark:bg-white/5 opacity-60 rounded-2xl font-black text-sm">Отмена</RippleButton>
+                <RippleButton onClick={() => processImportText(manualImportValue, true)} disabled={!manualImportValue.trim()} className={`flex-1 py-4 text-white rounded-2xl font-black text-sm shadow-xl transition-all ${!manualImportValue.trim() && 'opacity-50 pointer-events-none'}`} style={{ backgroundColor: nativeAccentColor, boxShadow: `0 10px 30px -5px ${nativeAccentColor}66` }}>Импорт</RippleButton>
               </div>
             </motion.div>
           </div>
@@ -1229,8 +1240,8 @@ export const App: React.FC = () => {
                   <input name="tags" value={editorTags} onChange={(e) => setEditorTags(e.target.value)} placeholder="Теги (через запятую)" className="w-full bg-black/5 dark:bg-white/5 rounded-[1.25rem] px-6 py-4 outline-none font-bold text-sm focus:ring-2 focus:ring-current transition-all border dark:border-white/10" style={{ caretColor: nativeAccentColor }} />
                 </div>
                 <div className="flex gap-4 mt-6">
-                  <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-black/5 dark:bg-white/5 opacity-60 rounded-2xl font-black transition-all active:scale-95 shadow-sm focus:outline-none focus:ring-0 focus-visible:ring-0">Отмена</RippleButton>
-                  <RippleButton type="submit" className="flex-1 py-4 text-white rounded-2xl font-black shadow-xl transition-all active:scale-95 focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ backgroundColor: nativeAccentColor, boxShadow: `0 10px 30px -5px ${nativeAccentColor}66` }}>Сохранить</RippleButton>
+                  <RippleButton type="button" onClick={closeAllModals} className="flex-1 py-4 bg-black/5 dark:bg-white/5 opacity-60 rounded-2xl font-black transition-all active:scale-95 shadow-sm">Отмена</RippleButton>
+                  <RippleButton type="submit" className="flex-1 py-4 text-white rounded-2xl font-black shadow-xl transition-all active:scale-95" style={{ backgroundColor: nativeAccentColor, boxShadow: `0 10px 30px -5px ${nativeAccentColor}66` }}>Сохранить</RippleButton>
                 </div>
               </form>
             </motion.div>
@@ -1243,10 +1254,8 @@ export const App: React.FC = () => {
           <motion.div initial={{ opacity: 0, y: 60, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 60, scale: 0.9 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-black/95 dark:bg-white/10 backdrop-blur-[70px] text-white dark:text-white px-8 py-5 rounded-[2.5rem] font-bold flex items-center justify-between shadow-2xl border border-white/10">
             <span className="truncate pr-4 tracking-tight text-sm">{snackbar}</span>
             <button 
-              onPointerDown={(e) => e.currentTarget.blur()}
-              onFocus={(e) => e.currentTarget.blur()}
-              onClick={(e) => { e.currentTarget.blur(); setSnackbar(null); }} 
-              className="shrink-0 font-black uppercase text-xs tracking-widest ml-4 focus:outline-none focus:ring-0 focus-visible:ring-0" 
+              onClick={() => setSnackbar(null)} 
+              className="shrink-0 font-black uppercase text-xs tracking-widest ml-4" 
               style={{ color: nativeAccentColor }}
             >
               OK
@@ -1269,7 +1278,7 @@ export const App: React.FC = () => {
                   </div>
                   <RippleButton 
                     onClick={() => handleSetSleepTimer(0)} 
-                    className="py-2 px-6 rounded-full font-black text-[10px] uppercase tracking-widest transition-all bg-red-500/10 text-red-500 border border-red-500/20 active:scale-95 focus:outline-none focus:ring-0 focus-visible:ring-0"
+                    className="py-2 px-6 rounded-full font-black text-[10px] uppercase tracking-widest transition-all bg-red-500/10 text-red-500 border border-red-500/20 active:scale-95"
                   >
                     Отключить таймер
                   </RippleButton>
@@ -1278,12 +1287,12 @@ export const App: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3 mb-8">
                 {[15, 30, 45, 60].map(m => (
-                  <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-4 bg-black/5 dark:bg-white/5 rounded-[1.5rem] font-black text-lg border dark:border-white/5 transition-colors focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ color: nativeAccentColor }}>{m}м</RippleButton>
+                  <RippleButton key={m} onClick={() => handleSetSleepTimer(m)} className="py-4 bg-black/5 dark:bg-white/5 rounded-[1.5rem] font-black text-lg border dark:border-white/5 transition-colors" style={{ color: nativeAccentColor }}>{m}м</RippleButton>
                 ))}
               </div>
               <form onSubmit={handleCustomTimerSubmit} className="grid grid-cols-2 gap-3 w-full">
                 <input type="number" value={customTimerInput} onChange={(e) => setCustomTimerInput(e.target.value)} placeholder="Свой" className="w-full h-14 bg-black/5 dark:bg-white/5 rounded-[1.5rem] px-4 outline-none font-black text-center focus:ring-2 focus:ring-current transition-all border dark:border-white/10" style={{ caretColor: nativeAccentColor }} />
-                <RippleButton type="submit" className="w-full h-14 text-white rounded-[1.5rem] font-black shadow-xl focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ backgroundColor: nativeAccentColor, boxShadow: `0 10px 30px -5px ${nativeAccentColor}66` }}>OK</RippleButton>
+                <RippleButton type="submit" className="w-full h-14 text-white rounded-[1.5rem] font-black shadow-xl" style={{ backgroundColor: nativeAccentColor, boxShadow: `0 10px 30px -5px ${nativeAccentColor}66` }}>OK</RippleButton>
               </form>
             </motion.div>
           </div>
@@ -1298,8 +1307,8 @@ export const App: React.FC = () => {
               <h3 className="text-2xl font-black mb-4 text-center tracking-tight">Внимание</h3>
               <p className="font-bold opacity-60 mb-10 text-center leading-relaxed">{confirmData.message}</p>
               <div className="flex gap-4">
-                <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-black/5 dark:bg-white/5 opacity-60 rounded-2xl font-black transition-all active:scale-95 shadow-sm focus:outline-none focus:ring-0 focus-visible:ring-0">Нет</RippleButton>
-                <RippleButton onClick={() => { confirmData.onConfirm(); closeAllModals(); }} className="flex-1 py-4 text-white rounded-2xl font-black shadow-xl transition-all active:scale-95 focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ backgroundColor: nativeDestructiveColor, boxShadow: `0 10px 30px -5px ${nativeDestructiveColor}66` }}>Да</RippleButton>
+                <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-black/5 dark:bg-white/5 opacity-60 rounded-2xl font-black transition-all active:scale-95 shadow-sm">Нет</RippleButton>
+                <RippleButton onClick={() => { confirmData.onConfirm(); closeAllModals(); }} className="flex-1 py-4 text-white rounded-2xl font-black shadow-xl transition-all active:scale-95" style={{ backgroundColor: nativeDestructiveColor, boxShadow: `0 10px 30px -5px ${nativeDestructiveColor}66` }}>Да</RippleButton>
               </div>
             </motion.div>
           </div>
