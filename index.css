@@ -24,51 +24,47 @@ body {
 /* Stylish Scrollbar for Playlist */
 .stylish-scroll {
   scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+  scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
 }
 
 .dark .stylish-scroll {
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 /* Webkit-based browsers (Chrome, Safari, Telegram, Android Webview) */
 .stylish-scroll::-webkit-scrollbar {
   display: block !important;
-  width: 5px !important;
+  width: 3px !important;
 }
 
 .stylish-scroll::-webkit-scrollbar-track {
   background: transparent !important;
-  margin: 10px 0; /* Отступы сверху и снизу */
+  margin: 15px 0;
 }
 
 .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15) !important;
-  border-radius: 10px !important;
-  border: 1px solid transparent;
-  background-clip: content-box;
+  background-color: rgba(0, 0, 0, 0.1) !important;
+  border-radius: 20px !important;
   transition: background-color 0.3s ease;
 }
 
 .dark .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.2) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
 .stylish-scroll:hover::-webkit-scrollbar-thumb,
 .stylish-scroll:active::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.3) !important;
+  background-color: rgba(0, 0, 0, 0.25) !important;
 }
 
 .dark .stylish-scroll:hover::-webkit-scrollbar-thumb,
 .dark .stylish-scroll:active::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.4) !important;
+  background-color: rgba(255, 255, 255, 0.25) !important;
 }
 
-/* Фикс для iOS, чтобы полоса прокрутки была видна */
-@supports (-webkit-overflow-scrolling: touch) {
-  .stylish-scroll {
-    padding-right: 4px; /* Освобождаем место под нативный индикатор */
-  }
+/* Скрываем скроллбар, когда список не активен (на некоторых браузерах) */
+.stylish-scroll:not(:hover)::-webkit-scrollbar-thumb {
+  background-color: transparent !important;
 }

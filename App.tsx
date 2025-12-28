@@ -5,6 +5,7 @@
 // - UI: Global focus reset in index.html.
 // - Feature: Symmetric swipe transitions.
 // - Feature: Video covers support (.mp4, .mov) with looping.
+// - Feature: Long press to reorder stations, Tap to play/stop.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -163,18 +164,57 @@ interface ReorderItemProps {
 const ReorderableStationItem: React.FC<ReorderItemProps> = ({
   station, isActive, isPlaying, isFavorite, status, accentColor, destructiveColor, onSelect, onEdit, onDelete, onToggleFavorite, hapticImpact
 }) => {
-  const [isDragging, setIsDragging] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
+  const dragControls = useDragControls();
+  const longPressTimerRef = useRef<number | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Начало замера времени для Long Press
+    longPressTimerRef.current = window.setTimeout(() => {
+      setIsReordering(true);
+      hapticImpact('heavy');
+      dragControls.start(e);
+    }, 450); // 450ms для активации режима перемещения
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    // Если отпустили раньше 450мс — это клик (Play/Stop)
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+      if (!isReordering) {
+        onSelect();
+      }
+    }
+    setIsReordering(false);
+  };
+
+  const handlePointerCancel = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    setIsReordering(false);
+  };
+
   return (
     <ReorderItem
       value={station}
+      dragControls={dragControls}
+      dragListener={false}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95 }}
-      onDragStart={() => { setIsDragging(true); hapticImpact('medium'); }}
-      onDragEnd={() => setIsDragging(false)}
-      whileDrag={{ scale: 1.02, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #2c2c2c)", boxShadow: "none" }}
-      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-colors group relative border-2 ${isActive ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-white/[0.015] border-transparent'} cursor-grab active:cursor-grabbing shadow-sm`}
-      onClick={() => !isDragging && onSelect()}
+      whileDrag={{ 
+        scale: 1.04, 
+        zIndex: 100, 
+        backgroundColor: "var(--tg-theme-secondary-bg-color, #f8f8f8)", 
+        boxShadow: "0 20px 40px rgba(0,0,0,0.12)" 
+      }}
+      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-all group relative border-2 select-none touch-none ${isActive ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'hover:bg-gray-50 dark:hover:bg-white/5 bg-white dark:bg-white/[0.015] border-transparent'} shadow-sm`}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerCancel}
     >
       <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none">
         <StationCover station={station} className="w-full h-full" showTags={false} />
@@ -198,11 +238,11 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         </div>
       </div>
       <div className="flex gap-0.5 ml-auto pr-1">
-        <RippleButton onClick={onToggleFavorite} className={`p-2.5 rounded-xl ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
+        <RippleButton onClick={(e) => { e.stopPropagation(); onToggleFavorite(e); }} className={`p-2.5 rounded-xl ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
           {isFavorite ? <Icons.Star /> : <Icons.StarOutline />}
         </RippleButton>
-        <RippleButton onClick={onEdit} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors" onMouseEnter={(e) => (e.currentTarget.style.color = accentColor)} onMouseLeave={(e) => (e.currentTarget.style.color = '')}><Icons.Settings /></RippleButton>
-        <RippleButton onClick={onDelete} className="p-2.5 rounded-xl transition-all" style={{ color: 'var(--tg-theme-subtitle-text-color, #999)' }} onMouseEnter={(e) => (e.currentTarget.style.color = destructiveColor)} onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--tg-theme-subtitle-text-color, #999)')}>
+        <RippleButton onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors" onMouseEnter={(e) => (e.currentTarget.style.color = accentColor)} onMouseLeave={(e) => (e.currentTarget.style.color = '')}><Icons.Settings /></RippleButton>
+        <RippleButton onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="p-2.5 rounded-xl transition-all" style={{ color: 'var(--tg-theme-subtitle-text-color, #999)' }} onMouseEnter={(e) => (e.currentTarget.style.color = destructiveColor)} onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--tg-theme-subtitle-text-color, #999)')}>
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
         </RippleButton>
       </div>
@@ -888,7 +928,7 @@ export const App: React.FC = () => {
                         setActiveStationId(targetStation.id);
                         if (status === 'playing' || status === 'loading') {
                             if (targetStation.id !== playingStationId) {
-                                Maryland: setPlayingStationId(targetStation.id);
+                                setPlayingStationId(targetStation.id);
                                 if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
                                 play(targetStation.streamUrl);
                             }
