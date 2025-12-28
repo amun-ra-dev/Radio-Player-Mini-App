@@ -1,10 +1,10 @@
 
-// Build: 2.9.28
+// Build: 2.9.29
+// - Fix: Keyboard overlap issue in Editor modal.
+// - Feature: Auto-scroll to focused input fields.
 // - Feature: Background Playback Full Optimization.
 // - Feature: Added Lockscreen/Headphone navigation support (Next/Prev track).
-// - Feature: Enhanced Media Session API integration.
 // - Feature: M3U (#EXTINF) format parsing during import.
-// - Feature: JSON in clipboard is wrapped in Markdown code blocks.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.28";
+const APP_VERSION = "2.9.29";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -602,6 +602,14 @@ export const App: React.FC = () => {
     setConfirmData({ message: 'Очистить весь список станций?', onConfirm: () => { setStations([]); setFavorites([]); setPlayingStationId(''); setActiveStationId(''); stop(); hapticImpact('heavy'); setSnackbar('Список очищен'); setShowConfirmModal(false); } }); setShowConfirmModal(true);
   };
 
+  const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
+    if (!isMobile) return;
+    // Delay slightly to allow keyboard to finish opening and viewport to resize
+    setTimeout(() => {
+      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 400);
+  };
+
   const addOrUpdateStation = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); 
     const formData = new FormData(e.currentTarget); 
@@ -780,19 +788,21 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
+      {/* --- MODALS --- */}
       <AnimatePresence>
         {showEditor && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+          <div className="fixed inset-0 z-[60] flex items-start sm:items-center justify-center p-6 overflow-hidden">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditor(false)} />
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh] no-scrollbar">
               <div className="flex justify-center mb-8 mt-4"><div className="w-40 h-40 rounded-3xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10 relative">{editorCoverPreview ? <StationCover station={{ name: 'Preview', coverUrl: editorCoverPreview }} className="w-full h-full" showTags={false} showLink={false} /> : <Icons.Add className="w-8 h-8 opacity-20" />}</div></div>
               <form onSubmit={addOrUpdateStation} className="space-y-4">
-                <input name="name" defaultValue={editingStation?.name} placeholder="Название станции" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
-                <input name="url" defaultValue={editingStation?.streamUrl} placeholder="Stream URL" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
-                <input name="coverUrl" defaultValue={editingStation?.coverUrl} placeholder="URL Обложки" onChange={(e) => setEditorCoverPreview(e.target.value)} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
-                <input name="homepageUrl" defaultValue={editingStation?.homepageUrl} placeholder="Сайт станции" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
-                <input name="tags" defaultValue={editingStation?.tags?.join(', ')} placeholder="Теги" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                <input name="name" onFocus={handleInputFocus} defaultValue={editingStation?.name} placeholder="Название станции" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                <input name="url" onFocus={handleInputFocus} defaultValue={editingStation?.streamUrl} placeholder="Stream URL" required className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                <input name="coverUrl" onFocus={handleInputFocus} defaultValue={editingStation?.coverUrl} placeholder="URL Обложки" onChange={(e) => setEditorCoverPreview(e.target.value)} className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                <input name="homepageUrl" onFocus={handleInputFocus} defaultValue={editingStation?.homepageUrl} placeholder="Сайт станции" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
+                <input name="tags" onFocus={handleInputFocus} defaultValue={editingStation?.tags?.join(', ')} placeholder="Теги" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 <div className="flex gap-3 pt-6"><RippleButton type="button" onClick={() => setShowEditor(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton><RippleButton type="submit" className="flex-1 py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Сохранить</RippleButton></div>
+                <div className="h-20 sm:hidden" /> {/* Extra spacer for mobile keyboard */}
               </form>
             </motion.div>
           </div>
@@ -806,7 +816,7 @@ export const App: React.FC = () => {
             <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center">
               <h2 className="text-2xl font-black mb-6">Таймер сна</h2>
               <div className="grid grid-cols-3 gap-2 mb-4">{[15, 30, 45, 60, 90, 120].map(min => <RippleButton key={min} onClick={() => handleSetSleepTimer(min)} className="py-3 bg-black/5 dark:bg-white/5 rounded-xl font-black transition-all text-xs">{min} м</RippleButton>)}</div>
-              <div className="flex gap-2 mb-6"><input type="number" value={customSleepMinutes} onChange={(e) => setCustomSleepMinutes(e.target.value)} placeholder="Минуты" className="flex-1 bg-black/5 dark:bg-white/5 rounded-xl px-4 py-3 font-bold outline-none text-center" /><RippleButton onClick={() => { const val = parseInt(customSleepMinutes); if (!isNaN(val) && val > 0) handleSetSleepTimer(val); }} disabled={!customSleepMinutes} className="px-6 rounded-xl text-white font-black transition-opacity disabled:opacity-20" style={{ backgroundColor: nativeAccentColor }}>OK</RippleButton></div>
+              <div className="flex gap-2 mb-6"><input type="number" onFocus={handleInputFocus} value={customSleepMinutes} onChange={(e) => setCustomSleepMinutes(e.target.value)} placeholder="Минуты" className="flex-1 bg-black/5 dark:bg-white/5 rounded-xl px-4 py-3 font-bold outline-none text-center" /><RippleButton onClick={() => { const val = parseInt(customSleepMinutes); if (!isNaN(val) && val > 0) handleSetSleepTimer(val); }} disabled={!customSleepMinutes} className="px-6 rounded-xl text-white font-black transition-opacity disabled:opacity-20" style={{ backgroundColor: nativeAccentColor }}>OK</RippleButton></div>
               <RippleButton onClick={() => handleSetSleepTimer(0)} className="w-full py-4 text-red-500 bg-red-500/10 rounded-2xl font-black">Отключить</RippleButton>
             </motion.div>
           </div>
