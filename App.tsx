@@ -202,7 +202,6 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
           {isFavorite ? <Icons.Star /> : <Icons.StarOutline />}
         </RippleButton>
         <RippleButton onClick={onEdit} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors" onMouseEnter={(e) => (e.currentTarget.style.color = accentColor)} onMouseLeave={(e) => (e.currentTarget.style.color = '')}><Icons.Settings /></RippleButton>
-        {/* Fix: changed 'nativeDestructiveColor' to 'destructiveColor' to match the props provided in the functional component's arguments. */}
         <RippleButton onClick={onDelete} className="p-2.5 rounded-xl transition-all" style={{ color: 'var(--tg-theme-subtitle-text-color, #999)' }} onMouseEnter={(e) => (e.currentTarget.style.color = destructiveColor)} onMouseLeave={(e) => (e.currentTarget.style.color = 'var(--tg-theme-subtitle-text-color, #999)')}>
           <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
         </RippleButton>
@@ -889,7 +888,7 @@ export const App: React.FC = () => {
                         setActiveStationId(targetStation.id);
                         if (status === 'playing' || status === 'loading') {
                             if (targetStation.id !== playingStationId) {
-                                setPlayingStationId(targetStation.id);
+                                Maryland: setPlayingStationId(targetStation.id);
                                 if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
                                 play(targetStation.streamUrl);
                             }
@@ -1050,7 +1049,7 @@ export const App: React.FC = () => {
                   </button>
                 </div>
               </div>
-              <div ref={listRef} className="flex-1 overflow-y-auto px-6 flex flex-col overscroll-contain stylish-scroll" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+              <div ref={listRef} className="flex-1 overflow-y-auto px-6 pr-4 flex flex-col overscroll-contain stylish-scroll" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
                 {stationsInPlaylist.length > 0 ? (
                   <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-2">
                     {stationsInPlaylist.map(s => (
