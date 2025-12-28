@@ -1,8 +1,9 @@
 
-// Build: 2.9.0
-// - UI: Removed stream URL from playlist items as requested.
-// - Layout: Streamlined station info (Cover, Name, Tags only).
-// - UX: Maintained smooth reordering, selective export, and edit mode features.
+// Build: 2.9.1
+// - UI: Shortened "Edit" button text to "РЕДАКТ." in playlist header.
+// - Feature: Selective Export (All vs Favorites) modal logic refined.
+// - UX: Disabled text selection across the interface to prevent accidental highlighting.
+// - Layout: Removed stream URL from playlist items for a cleaner look.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -20,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.0";
+const APP_VERSION = "2.9.1";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -191,7 +192,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         backgroundColor: "var(--tg-theme-secondary-bg-color, #f8f8f8)",
         boxShadow: "none" 
       }}
-      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} ${isDragging ? 'z-50' : 'shadow-sm'}`}
+      className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} ${isDragging ? 'z-50' : 'shadow-sm select-none'}`}
       onClick={() => !isDragging && (isEditMode ? onEdit({} as any) : onSelect())}
     >
       {isEditMode && (
@@ -895,7 +896,7 @@ export const App: React.FC = () => {
   }, [displayedStations, activeStationId]);
 
   return (
-    <div className="flex flex-col overflow-hidden transition-colors duration-500" style={{ height: 'var(--tg-viewport-height, 100vh)', color: nativeTextColor, backgroundColor: nativeBgColor }}>
+    <div className="flex flex-col overflow-hidden transition-colors duration-500 select-none" style={{ height: 'var(--tg-viewport-height, 100vh)', color: nativeTextColor, backgroundColor: nativeBgColor }}>
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20 dark:opacity-40 bg-[radial-gradient(circle_at_center,_#3b82f6_0%,_transparent_70%)] dark:bg-[radial-gradient(circle_at_center,_#1d4ed8_0%,_transparent_80%)]" />
       
       <div className="flex items-center justify-between px-6 bg-white/70 dark:bg-black/30 border-b border-black/5 dark:border-white/10 z-20 shrink-0 backdrop-blur-[70px]" style={{ paddingTop: isMobile ? 'calc(var(--tg-safe-top, 0px) + 46px)' : 'calc(var(--tg-safe-top, 0px) + 16px)', paddingBottom: '12px' }}>
@@ -1149,7 +1150,7 @@ export const App: React.FC = () => {
                       backgroundColor: isPlaylistEditMode ? nativeAccentColor : undefined,
                     }}
                   >
-                    {isPlaylistEditMode ? 'Готово' : 'Редак.'}
+                    {isPlaylistEditMode ? 'Готово' : 'РЕДАКТ.'}
                   </RippleButton>
                 </div>
               </div>
