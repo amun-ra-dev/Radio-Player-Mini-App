@@ -1,9 +1,8 @@
-
-// Build: 2.9.1
-// - UI: Shortened "Edit" button text to "РЕДАКТ." in playlist header.
-// - Feature: Selective Export (All vs Favorites) modal logic refined.
-// - UX: Disabled text selection across the interface to prevent accidental highlighting.
-// - Layout: Removed stream URL from playlist items for a cleaner look.
+// Build: 2.9.4
+// - UI: Removed scrollbar from the station list using .no-scrollbar class.
+// - Fix: Resolved "e.stopPropagation is not a function" by passing real event object.
+// - UX: Disabled text selection across the interface.
+// - Layout: Cleaner playlist UI.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +20,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.1";
+const APP_VERSION = "2.9.4";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -193,7 +192,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         boxShadow: "none" 
       }}
       className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} ${isDragging ? 'z-50' : 'shadow-sm select-none'}`}
-      onClick={() => !isDragging && (isEditMode ? onEdit({} as any) : onSelect())}
+      onClick={(e: React.MouseEvent) => !isDragging && (isEditMode ? onEdit(e) : onSelect())}
     >
       {isEditMode && (
         <div 
@@ -265,7 +264,7 @@ export const App: React.FC = () => {
   const [stations, setStations] = useState<Station[]>(() => {
     const saved = localStorage.getItem('radio_stations');
     if (saved) { try { const parsed = JSON.parse(saved); if (Array.isArray(parsed)) return parsed; } catch {} }
-    return [];
+    return DEFAULT_STATIONS;
   });
 
   const [favorites, setFavorites] = useState<string[]>(() => {
@@ -1178,7 +1177,8 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              <div ref={listRef} className="flex-1 overflow-y-auto px-6 flex flex-col overscroll-contain" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+              {/* Station List Container - Scrollbar removed here */}
+              <div ref={listRef} className="flex-1 overflow-y-auto px-6 flex flex-col overscroll-contain no-scrollbar" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
                 {stationsInPlaylist.length > 0 ? (
                   <ReorderGroup 
                     axis="y" 

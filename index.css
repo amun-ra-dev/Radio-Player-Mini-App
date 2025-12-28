@@ -1,4 +1,3 @@
-
 /* Base styles and Tailwind shadow variables fix */
 :root {
   --swiper-theme-color: #2563eb;
@@ -19,6 +18,16 @@ body {
   padding: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Скрытие полосы прокрутки */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
 
 /* Custom scrollbar for desktop in dark mode */
