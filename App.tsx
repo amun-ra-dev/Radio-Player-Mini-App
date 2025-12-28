@@ -1,8 +1,8 @@
 
-// Build: 2.8.8
-// - Feature: Updated playlist item layout (Cover, Name, Tags).
-// - UI: Restored favorite button in edit mode.
-// - UX: Maintained smooth reordering and pill-button toggle.
+// Build: 2.8.9
+// - UI: Shortened "Edit" button text to "Редак." in playlist header.
+// - Feature: Selective Export (All vs Favorites) with a dedicated modal.
+// - UX: Improved playlist layout consistency.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -20,7 +20,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.8.8";
+const APP_VERSION = "2.8.9";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -227,7 +227,6 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       </div>
 
       <div className="flex items-center gap-0.5 ml-auto pr-1">
-        {/* Favorite button always visible as requested */}
         <RippleButton 
           onClick={(e) => { e.stopPropagation(); onToggleFavorite(e); }} 
           className={`p-2.5 rounded-xl transition-colors ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}
@@ -287,6 +286,7 @@ export const App: React.FC = () => {
   const [manualImportValue, setManualImportValue] = useState('');
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
   const [confirmData, setConfirmData] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [editingStation, setEditingStation] = useState<Station | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
@@ -570,6 +570,7 @@ export const App: React.FC = () => {
   const closeAllModals = useCallback(() => {
     setShowEditor(false); setShowPlaylist(false); setShowConfirmModal(false);
     setShowSleepTimerModal(false); setShowAboutModal(false); setShowManualImport(false);
+    setShowExportModal(false);
     setEditingStation(null);
     setIsPlaylistEditMode(false);
   }, []);
@@ -587,9 +588,9 @@ export const App: React.FC = () => {
   }, [volume, setVolume, hapticImpact]);
 
   useEffect(() => {
-    const isModalOpen = showEditor || showPlaylist || showConfirmModal || showSleepTimerModal || showAboutModal || showManualImport;
+    const isModalOpen = showEditor || showPlaylist || showConfirmModal || showSleepTimerModal || showAboutModal || showManualImport || showExportModal;
     setBackButton(isModalOpen, closeAllModals);
-  }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, showManualImport, setBackButton, closeAllModals]);
+  }, [showEditor, showPlaylist, showConfirmModal, showSleepTimerModal, showAboutModal, showManualImport, showExportModal, setBackButton, closeAllModals]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -624,12 +625,20 @@ export const App: React.FC = () => {
     setShowConfirmModal(true);
   };
 
-  const handleExport = () => {
+  const handleExport = (mode: 'all' | 'favorites') => {
+    const listToExport = mode === 'all' ? stations : stations.filter(s => favorites.includes(s.id));
+    
+    if (listToExport.length === 0) {
+        setSnackbar(mode === 'favorites' ? 'Нет избранных станций для экспорта' : 'Список пуст');
+        hapticNotification('warning');
+        return;
+    }
+
     const exportData: ExportSchemaV2 = {
       schemaVersion: 2,
       appVersion: APP_VERSION,
       exportedAt: Date.now(),
-      stations: stations.map(s => ({
+      stations: listToExport.map(s => ({
         id: s.id,
         title: s.name,
         streamUrl: s.streamUrl,
@@ -639,19 +648,28 @@ export const App: React.FC = () => {
       }))
     };
     
-    const stationNames = stations.map(s => `- ${s.name}`).join('\n');
+    const stationNames = listToExport.map(s => `- ${s.name}`).join('\n');
     const jsonText = JSON.stringify(exportData, null, 2);
-    const clipboardText = `**🤖 @mdsradibot Station List:**\n\n${stationNames}\n\n\`\`\`json\n${jsonText}\n\`\`\``;
+    const clipboardText = `**🤖 @mdsradibot Station List (${mode === 'all' ? 'Все' : 'Избранное'}):**\n\n${stationNames}\n\n\`\`\`json\n${jsonText}\n\`\`\``;
 
     navigator.clipboard.writeText(clipboardText)
       .then(() => { 
         hapticNotification('success'); 
-        setSnackbar(`Экспорт скопирован! (${stations.length} станций)`); 
+        setSnackbar(`Экспорт скопирован! (${listToExport.length} станций)`); 
+        setShowExportModal(false);
       })
       .catch(() => { 
         hapticNotification('error'); 
         setSnackbar('Ошибка экспорта'); 
       });
+  };
+
+  const handleExportClick = () => {
+    if (favorites.length > 0 && stations.length > favorites.length) {
+      setShowExportModal(true);
+    } else {
+      handleExport('all');
+    }
   };
 
   const processImportText = (input: string, isManual = false) => {
@@ -1132,7 +1150,7 @@ export const App: React.FC = () => {
                       backgroundColor: isPlaylistEditMode ? nativeAccentColor : undefined,
                     }}
                   >
-                    {isPlaylistEditMode ? 'Готово' : 'Редактировать'}
+                    {isPlaylistEditMode ? 'Готово' : 'Редак.'}
                   </RippleButton>
                 </div>
               </div>
@@ -1196,7 +1214,7 @@ export const App: React.FC = () => {
                   
                   <div className="grid grid-cols-3 gap-2">
                     <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60 transition-all hover:opacity-100 border border-transparent dark:border-white/5 focus:outline-none focus:ring-0 focus-visible:ring-0"><Icons.Import /> <span className="mt-1">Импорт</span></RippleButton>
-                    <RippleButton onClick={handleExport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60 transition-all hover:opacity-100 border border-transparent dark:border-white/5 focus:outline-none focus:ring-0 focus-visible:ring-0"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
+                    <RippleButton onClick={handleExportClick} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60 transition-all hover:opacity-100 border border-transparent dark:border-white/5 focus:outline-none focus:ring-0 focus-visible:ring-0"><Icons.Export /> <span className="mt-1">Экспорт</span></RippleButton>
                     <RippleButton onClick={handleReset} className="flex flex-col items-center justify-center p-4 bg-white/50 dark:bg-white/5 rounded-2xl text-[10px] font-black transition-all border border-transparent shadow-sm focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ color: nativeDestructiveColor, borderColor: `${nativeDestructiveColor}33`, boxShadow: `0 4px 15px -5px ${nativeDestructiveColor}44` }} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = `${nativeDestructiveColor}1a`)} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '')}><Icons.Reset style={{ color: nativeDestructiveColor }} /> <span className="mt-1">Сброс</span></RippleButton>
                   </div>
                 </div>
@@ -1330,6 +1348,29 @@ export const App: React.FC = () => {
               <div className="flex gap-4">
                 <RippleButton onClick={closeAllModals} className="flex-1 py-4 bg-black/5 dark:bg-white/5 opacity-60 rounded-2xl font-black transition-all active:scale-95 shadow-sm focus:outline-none focus:ring-0 focus-visible:ring-0">Нет</RippleButton>
                 <RippleButton onClick={() => { confirmData.onConfirm(); closeAllModals(); }} className="flex-1 py-4 text-white rounded-2xl font-black shadow-xl transition-all active:scale-95 focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ backgroundColor: nativeDestructiveColor, boxShadow: `0 10px 30px -5px ${nativeDestructiveColor}66` }}>Да</RippleButton>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showExportModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/85 backdrop-blur-md" onClick={closeAllModals} />
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 30 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 30 }} className="relative w-full max-w-sm bg-white/95 dark:bg-black/85 rounded-[3.5rem] p-10 border border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[70px]">
+              <h3 className="text-2xl font-black mb-6 text-center tracking-tight">Экспорт списка</h3>
+              <p className="font-bold opacity-60 mb-8 text-center leading-relaxed text-sm">Выберите, какие станции вы хотите экспортировать:</p>
+              <div className="flex flex-col gap-4">
+                <RippleButton onClick={() => handleExport('all')} className="w-full py-5 text-white rounded-2xl font-black shadow-xl focus:outline-none focus:ring-0 focus-visible:ring-0" style={{ backgroundColor: nativeAccentColor }}>
+                  Весь плейлист
+                </RippleButton>
+                <RippleButton onClick={() => handleExport('favorites')} className="w-full py-5 text-white rounded-2xl font-black shadow-xl focus:outline-none focus:ring-0 focus-visible:ring-0 bg-amber-500">
+                  Только избранное
+                </RippleButton>
+                <RippleButton onClick={closeAllModals} className="w-full py-4 bg-black/5 dark:bg-white/5 opacity-60 rounded-2xl font-black transition-all focus:outline-none focus:ring-0 focus-visible:ring-0">
+                  Отмена
+                </RippleButton>
               </div>
             </motion.div>
           </div>
