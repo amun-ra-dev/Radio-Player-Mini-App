@@ -1,10 +1,10 @@
 
-// Build: 2.9.13
-// - UI: Removed equalizer and darkening overlay from main covers (Swiper) during playback.
-// - UI: Added "Empty State" view with options to add station or load demo list.
-// - UI: Full support for JPG, PNG, WEBP, SVG, MOV, MP4 in covers.
-// - UI: Labels in Station Editor moved to placeholders.
-// - UI: Sleep Timer with custom input field.
+// Build: 2.9.14
+// - UI: Removed headers from Station Editor (Edit/New) as requested.
+// - UI: Added "Clear All" button to playlist with confirmation.
+// - UI: Removed equalizer and darkening overlay from main covers.
+// - UI: "Empty State" view with options to add station or load demo list.
+// - UI: Support for JPG, PNG, WEBP, SVG, MOV, MP4 in covers.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.13";
+const APP_VERSION = "2.9.14";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -516,6 +516,23 @@ export const App: React.FC = () => {
     e.stopPropagation(); setConfirmData({ message: 'Удалить эту станцию?', onConfirm: () => { const filtered = stations.filter(s => s.id !== id); setStations(filtered); setFavorites(prev => prev.filter(fid => fid !== id)); if (playingStationId === id) { setPlayingStationId(''); stop(); } if (activeStationId === id) { if (filtered.length > 0) setActiveStationId(filtered[0].id); else { setActiveStationId(''); } } hapticImpact('heavy'); setSnackbar('Станция удалена'); setShowConfirmModal(false); } }); setShowConfirmModal(true);
   };
 
+  const handleClearAll = () => {
+    setConfirmData({
+      message: 'Очистить весь список станций?',
+      onConfirm: () => {
+        setStations([]);
+        setFavorites([]);
+        setPlayingStationId('');
+        setActiveStationId('');
+        stop();
+        hapticImpact('heavy');
+        setSnackbar('Список очищен');
+        setShowConfirmModal(false);
+      }
+    });
+    setShowConfirmModal(true);
+  };
+
   const addOrUpdateStation = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault(); 
     const formData = new FormData(e.currentTarget); 
@@ -763,7 +780,12 @@ export const App: React.FC = () => {
                   </ReorderGroup>
                 ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-10 font-black opacity-30 text-xl">Плейлист пуст</div>}
                 <div className="mt-8 flex flex-col gap-4 mb-safe pb-16">
-                  {isPlaylistEditMode && <RippleButton onClick={() => { setEditingStation(null); setEditorCoverPreview(''); setShowEditor(true); }} className="w-full p-6 rounded-[2rem] border-2 border-dashed border-black/5 dark:border-white/10 opacity-40 font-black flex items-center justify-center gap-3"><Icons.Add /> Добавить станцию</RippleButton>}
+                  {isPlaylistEditMode && (
+                    <div className="flex flex-col gap-4">
+                      <RippleButton onClick={() => { setEditingStation(null); setEditorCoverPreview(''); setShowEditor(true); }} className="w-full p-6 rounded-[2rem] border-2 border-dashed border-black/5 dark:border-white/10 opacity-40 font-black flex items-center justify-center gap-3 transition-opacity hover:opacity-100"><Icons.Add /> Добавить станцию</RippleButton>
+                      <RippleButton onClick={handleClearAll} className="w-full flex items-center justify-center gap-2 p-4 bg-red-500/5 dark:bg-red-500/10 text-red-500 rounded-2xl text-[10px] font-black border border-red-500/20"><Icons.Reset /> Очистить список</RippleButton>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <RippleButton onClick={handleImport} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Import /> Из файла</RippleButton>
                     <RippleButton onClick={handleImportFromClipboard} className="flex flex-col items-center justify-center p-4 bg-black/5 dark:bg-white/5 rounded-2xl text-[10px] font-black opacity-60"><Icons.Paste /> Из буфера</RippleButton>
@@ -784,11 +806,11 @@ export const App: React.FC = () => {
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-6">
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowEditor(false)} />
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-md bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh] no-scrollbar">
-              <h2 className="text-2xl font-black mb-6">{editingStation ? 'Редактировать' : 'Новая станция'}</h2>
+              {/* Titles removed per user request */}
               
-              {/* Cover Preview Section - Using StationCover component for accurate preview */}
-              <div className="flex justify-center mb-6">
-                 <div className="w-32 h-32 rounded-3xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10 relative">
+              {/* Cover Preview Section */}
+              <div className="flex justify-center mb-8 mt-4">
+                 <div className="w-40 h-40 rounded-3xl overflow-hidden bg-black/5 dark:bg-white/5 flex items-center justify-center border-2 border-dashed border-black/10 relative">
                    {editorCoverPreview ? (
                       <StationCover 
                         station={{ name: 'Preview', coverUrl: editorCoverPreview }} 
@@ -812,7 +834,7 @@ export const App: React.FC = () => {
                   <input 
                     name="coverUrl" 
                     defaultValue={editingStation?.coverUrl} 
-                    placeholder="Адрес обложки (Cover URL: jpg, png, webp, svg, mov, mp4)"
+                    placeholder="Адрес обложки (jpg, png, webp, svg, mov, mp4)"
                     onChange={(e) => setEditorCoverPreview(e.target.value)}
                     className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" 
                   />
@@ -823,7 +845,7 @@ export const App: React.FC = () => {
                 <div>
                   <input name="tags" defaultValue={editingStation?.tags?.join(', ')} placeholder="Теги (через запятую)" className="w-full bg-black/5 dark:bg-white/5 rounded-2xl px-5 py-4 font-bold outline-none border-2 border-transparent focus:border-blue-500/30 transition-all" />
                 </div>
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-3 pt-6">
                   <RippleButton type="button" onClick={() => setShowEditor(false)} className="flex-1 py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton>
                   <RippleButton type="submit" className="flex-1 py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Сохранить</RippleButton>
                 </div>
