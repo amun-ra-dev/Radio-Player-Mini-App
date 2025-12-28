@@ -1,10 +1,10 @@
 
-// Build: 2.9.14
-// - UI: Removed headers from Station Editor (Edit/New) as requested.
-// - UI: Added "Clear All" button to playlist with confirmation.
+// Build: 2.9.15
+// - UI: Removed headers from Station Editor (Edit/New) for a cleaner look.
+// - UI: Added "Clear All" button to playlist (visible in Edit Mode).
+// - UI: Updated "Export to Clipboard" to include 🤖 @mdsradibot Station List prefix and formatted names.
 // - UI: Removed equalizer and darkening overlay from main covers.
-// - UI: "Empty State" view with options to add station or load demo list.
-// - UI: Support for JPG, PNG, WEBP, SVG, MOV, MP4 in covers.
+// - UI: Empty State view with demo list loading.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.14";
+const APP_VERSION = "2.9.15";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -465,7 +465,10 @@ export const App: React.FC = () => {
 
   const handleExportToClipboard = useCallback(() => {
     const schema = createExportSchema();
-    navigator.clipboard.writeText(JSON.stringify(schema, null, 2))
+    const stationListText = stations.map(s => `- ${s.name}`).join('\n');
+    const fullText = `🤖 @mdsradibot Station List:\n\n${stationListText}\n\n${JSON.stringify(schema, null, 2)}`;
+    
+    navigator.clipboard.writeText(fullText)
       .then(() => {
         setSnackbar('Скопировано в буфер обмена');
         hapticImpact('medium');
