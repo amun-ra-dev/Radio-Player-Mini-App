@@ -2,15 +2,16 @@
 /* Base styles and Tailwind shadow variables fix */
 :root {
   --swiper-theme-color: #2563eb;
-  --tw-ring-offset-shadow: 0 0 #0000;
-  --tw-ring-shadow: 0 0 #0000;
-  --tw-shadow: 0 0 #0000;
-  --tw-shadow-colored: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000 !important;
+  --tw-ring-shadow: 0 0 #0000 !important;
+  --tw-shadow: 0 0 #0000 !important;
+  --tw-shadow-colored: 0 0 #0000 !important;
 }
 
 * {
   transition: background-color 0.4s ease-out, border-color 0.4s ease-out, color 0.4s ease-out;
   -webkit-tap-highlight-color: transparent;
+  box-shadow: none !important; /* Force remove all utility shadows */
 }
 
 body {
@@ -20,9 +21,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Stylish iOS-like Scrollbar */
+/* Stylish iOS-like Scrollbar - Ultra clean */
 .stylish-scroll {
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
@@ -37,30 +38,32 @@ body {
 }
 
 .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.15) !important;
+  background-color: rgba(0, 0, 0, 0.1) !important;
   border-radius: 10px !important;
   opacity: 0;
   transition: opacity 0.3s;
 }
 
 .dark .stylish-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(255, 255, 255, 0.15) !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
 }
 
-/* Show scrollbar only when scrolling or hovering */
-.stylish-scroll:hover::-webkit-scrollbar-thumb,
-.stylish-scroll:active::-webkit-scrollbar-thumb {
+.stylish-scroll:hover::-webkit-scrollbar-thumb {
   opacity: 1;
 }
 
-/* Prevent text selection and system menus during long press */
+/* Reorder Item - Absolute Flat Mode */
 .reorder-item {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
   touch-action: pan-y;
+  will-change: transform;
+  box-shadow: none !important;
 }
 
 .reorder-item[data-dragging="true"] {
   touch-action: none;
+  z-index: 100;
+  box-shadow: none !important;
 }
