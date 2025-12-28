@@ -1,8 +1,8 @@
 
-// Build: 2.8.6
-// - Fix: Removed CSS transitions from reorderable items to fix "jerky" movement.
-// - UI: Styled Pill Button for "Edit/Done" in the top-right corner.
-// - UX: Ultra-smooth reordering physics with high damping.
+// Build: 2.8.7
+// - Feature: Dynamic Color Shadow (Glow) derived from station cover edges.
+// - UI: Improved main page visual depth with blurred background layers.
+// - UX: Maintained smooth reordering and pill-button edit toggle.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -20,7 +20,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.8.6";
+const APP_VERSION = "2.8.7";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -191,7 +191,6 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         backgroundColor: "var(--tg-theme-secondary-bg-color, #f8f8f8)",
         boxShadow: "none" 
       }}
-      // CRITICAL: Removed "transition-all" because it breaks Framer Motion's layout animations (causes jerkiness)
       className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} ${isDragging ? 'z-50' : 'shadow-sm'}`}
       onClick={() => !isDragging && (isEditMode ? onEdit({} as any) : onSelect())}
     >
@@ -964,15 +963,40 @@ export const App: React.FC = () => {
             >
               {displayedStations.map((station) => (
                 <SwiperSlide key={station.id} className="w-full h-full flex justify-center">
-                  <div className="relative w-full aspect-square rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-all duration-500" style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent', boxShadow: activeStationId === station.id ? `0 20px 60px -10px ${nativeAccentColor}22` : 'none' }} onClick={() => canPlay && handleTogglePlay()}>
-                    <StationCover 
-                      station={station} 
-                      className="w-full h-full" 
-                    />
-                    <div className="absolute bottom-6 right-6 z-30" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
-                      <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105 shadow-lg shadow-amber-500/30' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
-                        {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
-                      </RippleButton>
+                  <div className="relative w-full aspect-square group" onClick={() => canPlay && handleTogglePlay()}>
+                    {/* Dynamic Color Shadow Layer */}
+                    <AnimatePresence>
+                      {station.coverUrl && !station.coverUrl.toLowerCase().endsWith('.mp4') && !station.coverUrl.toLowerCase().endsWith('.mov') && (
+                        <motion.div 
+                          key={`glow-${station.id}`}
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ 
+                            opacity: activeStationId === station.id ? 0.6 : 0.3,
+                            scale: activeStationId === station.id ? 0.95 : 0.9,
+                          }}
+                          exit={{ opacity: 0 }}
+                          className="absolute inset-2 z-0 rounded-[2.5rem] blur-3xl pointer-events-none transition-all duration-700"
+                          style={{ 
+                            backgroundImage: `url(${station.coverUrl})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            filter: 'blur(32px) saturate(1.8)',
+                          }}
+                        />
+                      )}
+                    </AnimatePresence>
+
+                    {/* Main Card Layer */}
+                    <div className="relative z-10 w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-all duration-500" style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}>
+                      <StationCover 
+                        station={station} 
+                        className="w-full h-full" 
+                      />
+                      <div className="absolute bottom-6 right-6 z-30" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
+                        <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105 shadow-lg shadow-amber-500/30' : 'bg-black/30 text-white/60 hover:bg-black/40'}`}>
+                          {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
+                        </RippleButton>
+                      </div>
                     </div>
                   </div>
                 </SwiperSlide>
