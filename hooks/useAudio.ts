@@ -1,10 +1,10 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { PlayerStatus } from '../types.ts';
+import { PlayerStatus, Station } from '../types.ts';
 
 declare const Hls: any;
 
-export const useAudio = (streamUrl: string | null) => {
+export const useAudio = (currentStation: Station | null) => {
   const [status, setStatus] = useState<PlayerStatus>('idle');
   const [volume, setVolume] = useState(() => {
     const saved = localStorage.getItem('radio_volume');
@@ -19,6 +19,22 @@ export const useAudio = (streamUrl: string | null) => {
   const requestVersionRef = useRef(0);
   const currentLoadedUrlRef = useRef<string | null>(null);
 
+  // Синхронизация метаданных с ОС
+  const updateMediaSession = useCallback(() => {
+    if (!currentStation || !('mediaSession' in navigator)) return;
+
+    const metadata = {
+      title: currentStation.name,
+      artist: 'Radio Player',
+      album: currentStation.tags?.join(', ') || '',
+      artwork: [
+        { src: currentStation.coverUrl || '', sizes: '512x512', type: 'image/jpeg' }
+      ]
+    };
+
+    navigator.mediaSession.metadata = new window.MediaMetadata(metadata);
+  }, [currentStation]);
+
   const syncVolume = useCallback(() => {
     if (audioRef.current) {
         audioRef.current.volume = volume;
@@ -30,13 +46,11 @@ export const useAudio = (streamUrl: string | null) => {
     if (!shouldBePlayingRef.current) return;
 
     const error = audioRef.current?.error;
-    console.warn(`Audio playback error [${audioRef.current?.src}]:`, error?.message || 'Unknown error', e);
+    console.warn(`Audio playback error:`, error?.message || 'Unknown error', e);
 
     if (retryCountRef.current < 5) { 
       retryCountRef.current++;
       const delay = 1000 * Math.pow(1.5, retryCountRef.current);
-      console.log(`Retrying playback in ${Math.round(delay)}ms (attempt ${retryCountRef.current})...`);
-      
       setTimeout(() => {
         if (shouldBePlayingRef.current) {
           playAudioInternal(currentLoadedUrlRef.current || undefined);
@@ -45,12 +59,11 @@ export const useAudio = (streamUrl: string | null) => {
     } else {
       setStatus('error');
       shouldBePlayingRef.current = false;
-      currentLoadedUrlRef.current = null;
     }
   }, []);
 
   const playAudioInternal = useCallback((overrideUrl?: string) => {
-    const urlToPlay = overrideUrl || streamUrl;
+    const urlToPlay = overrideUrl || currentStation?.streamUrl;
     if (!urlToPlay || !audioRef.current) {
         if (!urlToPlay) setStatus('idle');
         return;
@@ -58,11 +71,8 @@ export const useAudio = (streamUrl: string | null) => {
 
     const currentVersion = ++requestVersionRef.current;
     shouldBePlayingRef.current = true;
-    
-    // UI Feedback: Immediately go to loading
     setStatus('loading');
     
-    // 1. Cleanup HLS
     if (hlsRef.current) {
       try { hlsRef.current.destroy(); } catch {}
       hlsRef.current = null;
@@ -70,22 +80,16 @@ export const useAudio = (streamUrl: string | null) => {
 
     const audio = audioRef.current;
     syncVolume();
+    updateMediaSession();
 
-    const isHlsUrl = (url: string) => {
-        const lowerUrl = url.toLowerCase();
-        return lowerUrl.includes('.m3u8');
-    };
+    const isHlsUrl = (url: string) => url.toLowerCase().includes('.m3u8');
 
     if (isHlsUrl(urlToPlay) && typeof Hls !== 'undefined' && Hls.isSupported()) {
       currentLoadedUrlRef.current = urlToPlay;
       const hls = new Hls({
         enableWorker: true,
         lowLatencyMode: true,
-        backBufferLength: 60,
-        manifestLoadingMaxRetry: 3,
-        xhrSetup: (xhr: any) => {
-          xhr.withCredentials = false;
-        }
+        manifestLoadingMaxRetry: 3
       });
       hlsRef.current = hls;
       hls.loadSource(urlToPlay);
@@ -93,12 +97,7 @@ export const useAudio = (streamUrl: string | null) => {
       
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (currentVersion !== requestVersionRef.current) return;
-        syncVolume();
-        audio.play().catch(e => {
-           if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
-              handleAudioError(e);
-           }
-        });
+        audio.play().catch(handleAudioError);
       });
 
       hls.on(Hls.Events.ERROR, (_: any, data: any) => {
@@ -112,25 +111,13 @@ export const useAudio = (streamUrl: string | null) => {
         }
       });
     } else {
-      // Native Audio Path (MP3/AAC)
-      // IMPORTANT: We do NOT use async/await here to keep the user gesture intact
-      audio.pause();
       audio.src = urlToPlay;
       currentLoadedUrlRef.current = urlToPlay;
       audio.load(); 
       syncVolume();
-      
-      const playPromise = audio.play();
-      if (playPromise !== undefined) {
-        playPromise.catch(e => {
-          if (e.name !== 'AbortError' && currentVersion === requestVersionRef.current) {
-             console.error("Native playback failed:", e);
-             handleAudioError(e);
-          }
-        });
-      }
+      audio.play().catch(handleAudioError);
     }
-  }, [streamUrl, handleAudioError, syncVolume]);
+  }, [currentStation, handleAudioError, syncVolume, updateMediaSession]);
 
   const stopAndCleanup = useCallback(() => {
     shouldBePlayingRef.current = false;
@@ -145,16 +132,16 @@ export const useAudio = (streamUrl: string | null) => {
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = "";
-      audioRef.current.load();
     }
     setStatus('paused');
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.playbackState = 'paused';
+    }
   }, []);
 
   useEffect(() => {
     if (!audioRef.current) {
-      const audio = new Audio();
-      audio.preload = "auto";
-      audioRef.current = audio;
+      audioRef.current = new Audio();
     }
 
     const audio = audioRef.current;
@@ -163,18 +150,14 @@ export const useAudio = (streamUrl: string | null) => {
       if (shouldBePlayingRef.current) {
         setStatus('playing'); 
         retryCountRef.current = 0; 
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.playbackState = 'playing';
+        }
       }
     };
 
-    const onWaiting = () => { 
-      if (shouldBePlayingRef.current) setStatus('loading'); 
-    };
-
-    const onPause = () => { 
-      // Only set paused if we explicitly meant to be paused
-      if (!shouldBePlayingRef.current) setStatus('paused');
-    };
-
+    const onPause = () => { if (!shouldBePlayingRef.current) setStatus('paused'); };
+    const onWaiting = () => { if (shouldBePlayingRef.current) setStatus('loading'); };
     const onError = (e: any) => handleAudioError(e);
 
     audio.addEventListener('playing', onPlaying);
@@ -192,20 +175,35 @@ export const useAudio = (streamUrl: string | null) => {
 
   useEffect(() => {
     localStorage.setItem('radio_volume', volume.toString());
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-    }
+    if (audioRef.current) audioRef.current.volume = volume;
   }, [volume]);
 
+  // Настройка системных кнопок управления
   useEffect(() => {
+    if (!('mediaSession' in navigator)) return;
+
+    const actionHandlers: [MediaSessionAction, () => void][] = [
+      ['play', () => playAudioInternal()],
+      ['pause', () => stopAndCleanup()],
+      ['stop', () => stopAndCleanup()],
+    ];
+
+    for (const [action, handler] of actionHandlers) {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (error) {
+        console.warn(`The media session action "${action}" is not supported yet.`);
+      }
+    }
+
     return () => {
-      if (hlsRef.current) try { hlsRef.current.destroy(); } catch {}
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.src = "";
+      for (const [action] of actionHandlers) {
+        try {
+          navigator.mediaSession.setActionHandler(action, null);
+        } catch {}
       }
     };
-  }, []);
+  }, [playAudioInternal, stopAndCleanup]);
 
   return {
     status,
