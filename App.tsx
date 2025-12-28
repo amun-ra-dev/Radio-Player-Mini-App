@@ -1,9 +1,11 @@
 
-// Build: 2.9.33
+// Build: 2.9.35
+// - UI: Split "Empty State" into "No Stations" and "No Favorites" with contextual actions.
+// - UI: Main screen now has a "Load Demo" button if the list is totally empty.
 // - UI: Removed drag handles and gear icons in edit mode.
 // - Interaction: Reordering works by dragging anywhere on the item.
 // - Interaction: Clicking an item in edit mode opens the station editor.
-// - Fix: Robust keyboard overlap protection and handleClearAll.
+// - Fix: Added missing handleClearAll function.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +23,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.33";
+const APP_VERSION = "2.9.35";
 
 const isVideoUrl = (url: string | undefined): boolean => {
   if (!url) return false;
@@ -317,7 +319,7 @@ export const App: React.FC = () => {
     if (!stations.length) return [];
     if (!onlyFavoritesMode) return stations;
     const filtered = stations.filter(s => favorites.includes(s.id));
-    return filtered.length > 0 ? filtered : [];
+    return filtered;
   }, [stations, favorites, onlyFavoritesMode]);
 
   const activeStation = useMemo<Station | null>(() => {
@@ -375,7 +377,6 @@ export const App: React.FC = () => {
 
   const hasStations = stations.length > 0;
   const hasFavorites = favorites.length > 0;
-  useEffect(() => { if (!hasFavorites && onlyFavoritesMode) setOnlyFavoritesMode(false); }, [hasFavorites, onlyFavoritesMode]);
 
   const stationsInPlaylist = useMemo(() => playlistFilter === 'favorites' ? stations.filter(s => favorites.includes(s.id)) : stations, [playlistFilter, stations, favorites]);
 
@@ -438,7 +439,7 @@ export const App: React.FC = () => {
           const currentIndex = stations.findIndex(s => s.id === id);
           const nextFav = favStations.find(s => stations.findIndex(st => st.id === s.id) > currentIndex) || favStations[0];
           setTimeout(() => { setActiveStationId(nextFav.id); if (status === 'playing' || status === 'loading') { setPlayingStationId(nextFav.id); setLastPlayedFavoriteId(nextFav.id); play(); } }, 0);
-        } else { setTimeout(() => { setOnlyFavoritesMode(false); setSnackbar('Режим избранного отключен: список пуст'); }, 0); }
+        }
       } else if (!isFavNow) setLastPlayedFavoriteId(id);
       return nextFavs;
     });
@@ -605,6 +606,13 @@ export const App: React.FC = () => {
     setShowEditor(false); setEditorCoverPreview(''); hapticImpact('light');
   };
 
+  const loadDemoList = () => {
+    setStations(DEFAULT_STATIONS);
+    if (DEFAULT_STATIONS.length > 0) setActiveStationId(DEFAULT_STATIONS[0].id);
+    setSnackbar('Демо-список загружен');
+    hapticImpact('medium');
+  };
+
   const nativeAccentColor = themeParams?.button_color || '#2563eb';
   const nativeDestructiveColor = themeParams?.destructive_text_color || '#ef4444';
   const nativeBgColor = themeParams?.bg_color || '#ffffff';
@@ -681,12 +689,30 @@ export const App: React.FC = () => {
             </Swiper>
           ) : (
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="w-full h-full flex flex-col items-center justify-center text-center p-8 bg-white/30 dark:bg-black/20 backdrop-blur-md rounded-[3rem] border border-white/10">
-              <div className="mb-6 opacity-30"><Icons.List className="w-16 h-16 mx-auto" /></div>
-              <h2 className="text-2xl font-black mb-2 opacity-80">Плейлист пуст</h2>
-              <p className="text-sm opacity-50 mb-8 font-medium">Добавьте свою станцию или начните с демо-списка</p>
-              <div className="flex flex-col gap-3 w-full">
-                <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>+ Добавить станцию</RippleButton>
-                <RippleButton onClick={() => { setStations(DEFAULT_STATIONS); setSnackbar('Демо-список загружен'); hapticImpact('medium'); }} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Загрузить демо-список</RippleButton>
+              <div className="mb-6 opacity-30">
+                {onlyFavoritesMode && hasStations ? <Icons.Star className="w-16 h-16 mx-auto text-amber-500" /> : <Icons.List className="w-16 h-16 mx-auto" />}
+              </div>
+              <h2 className="text-2xl font-black mb-2 opacity-80">
+                {onlyFavoritesMode && hasStations ? 'Нет избранных' : 'Плейлист пуст'}
+              </h2>
+              <p className="text-sm opacity-50 mb-8 font-medium">
+                {onlyFavoritesMode && hasStations ? 'Добавьте станции в избранное или отключите фильтр' : 'Добавьте свою станцию или начните с демо-списка'}
+              </p>
+              <div className="flex flex-col gap-3 w-full max-w-[240px]">
+                {onlyFavoritesMode && hasStations ? (
+                  <RippleButton onClick={() => setOnlyFavoritesMode(false)} className="w-full py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>
+                    Показать все станции
+                  </RippleButton>
+                ) : (
+                  <>
+                    <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>
+                      + Добавить станцию
+                    </RippleButton>
+                    <RippleButton onClick={loadDemoList} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">
+                      Загрузить демо-список
+                    </RippleButton>
+                  </>
+                )}
               </div>
             </motion.div>
           )}
