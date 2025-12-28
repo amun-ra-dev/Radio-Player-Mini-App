@@ -1,10 +1,11 @@
 
 // App.tsx
-// Build: 2.7.4
-// - Pattern: iOS-like reorder (Normal vs Edit modes).
-// - Logic: Drag allowed ONLY via handle "≡" in Edit mode.
-// - Design: Absolute Flat (Zero Shadows, Zero Scale).
-// - Library: Integrated dnd-kit for robust touch gesture handling.
+// Build: 2.7.5
+// - Logic: iOS Reorder Pattern (Normal vs Edit mode).
+// - Interaction: Reordering ONLY via handle "≡" in Edit mode.
+// - UX: No playback triggers when tapping in Edit mode.
+// - Design: Absolute Flat (No Shadows, No Scale).
+// - Tech: dnd-kit implementation for stable touch gestures.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,7 +13,7 @@ import { Swiper, SwiperSlide } from 'swiper/react';
 import { EffectCreative, Keyboard } from 'swiper/modules';
 import type { Swiper as SwiperClass } from 'swiper';
 
-// dnd-kit components
+// dnd-kit
 import {
   DndContext,
   DragEndEvent,
@@ -24,15 +25,17 @@ import {
   useSensor,
   useSensors,
   MeasuringStrategy,
-  defaultDropAnimationSideEffects,
 } from '@dnd-kit/core';
 import {
-  SortableContext,
+  SortableContext as SortableContextBase,
   useSortable,
   arrayMove,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+// Comment: Fix for SortableContext type mismatch error when framework types clash (e.g., JSX.Element resolves to VNode)
+const SortableContext = SortableContextBase as any;
 
 import { Station, PlayerStatus, ExportSchemaV2 } from './types.ts';
 import { DEFAULT_STATIONS, Icons } from './constants.tsx';
@@ -41,7 +44,7 @@ import { useAudio } from './hooks/useAudio.ts';
 import { RippleButton } from './components/UI/RippleButton.tsx';
 import { Logo } from './components/UI/Logo.tsx';
 
-const APP_VERSION = "2.7.4";
+const APP_VERSION = "2.7.5";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -178,7 +181,7 @@ interface SortableItemProps {
   onToggleFavorite: (e: React.MouseEvent) => void;
 }
 
-const SortableStationItem: React.FC<SortableItemProps> = ({
+const SortableStationRow: React.FC<SortableItemProps> = ({
   station, isActive, isPlaying, isFavorite, status, accentColor, editMode,
   onSelect, onEdit, onDelete, onToggleFavorite
 }) => {
@@ -202,7 +205,7 @@ const SortableStationItem: React.FC<SortableItemProps> = ({
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-3 p-3 mb-1 rounded-2xl transition-colors border-2 select-none ${
+      className={`sortable-item flex items-center gap-3 p-3 mb-1 rounded-2xl transition-colors border-2 select-none ${
         isDragging 
           ? 'bg-blue-100/20 dark:bg-white/10 border-blue-400 dark:border-white/40' 
           : isActive 
@@ -211,48 +214,70 @@ const SortableStationItem: React.FC<SortableItemProps> = ({
       }`}
       onClick={() => !editMode && onSelect()}
     >
-      <div className="relative w-11 h-11 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none">
-        <StationCover station={station} className="w-full h-full" showTags={false} />
-        <AnimatePresence>
-          {isPlaying && (status === 'playing' || status === 'loading') && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><MiniEqualizer /></motion.div>
+      <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+        <AnimatePresence mode="popLayout">
+          {editMode && (
+            <motion.div
+              initial={{ x: -40, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: -40, opacity: 0 }}
+              className="mr-1"
+            >
+              <RippleButton onClick={onDelete} className="p-2 text-red-500 rounded-full bg-red-500/10">
+                <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
+              </RippleButton>
+            </motion.div>
           )}
         </AnimatePresence>
+
+        <div className="relative w-11 h-11 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none">
+          <StationCover station={station} className="w-full h-full" showTags={false} />
+          <AnimatePresence>
+            {isPlaying && (status === 'playing' || status === 'loading') && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><MiniEqualizer /></motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <div className="flex-1 min-w-0 pointer-events-none ml-1">
+          <p className="font-bold text-[13px] truncate leading-tight dark:text-white/90" style={{ color: isActive ? accentColor : undefined }}>{station.name}</p>
+          <p className="text-[9px] opacity-30 dark:opacity-40 truncate uppercase font-medium mt-0.5 tracking-wider">{station.streamUrl.split('/')[2] || 'Radio Stream'}</p>
+        </div>
       </div>
 
-      <div className="flex-1 min-w-0 pointer-events-none">
-        <p className="font-bold text-[13px] truncate leading-tight dark:text-white/90" style={{ color: isActive ? accentColor : undefined }}>{station.name}</p>
-        <p className="text-[9px] opacity-30 dark:opacity-40 truncate uppercase font-medium mt-0.5 tracking-wider">{station.streamUrl.split('/')[2] || 'Radio Stream'}</p>
-      </div>
-
-      <div className="flex items-center gap-0.5 ml-auto" data-no-drag>
-        {!editMode ? (
-          <>
-            <RippleButton onClick={onToggleFavorite} className={`p-2 rounded-lg transition-colors ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
-              {isFavorite ? <Icons.Star className="w-4 h-4" /> : <Icons.StarOutline className="w-4 h-4" />}
-            </RippleButton>
-            <RippleButton onClick={onEdit} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-blue-500 transition-colors">
-              <Icons.Settings className="w-4 h-4" />
-            </RippleButton>
-          </>
-        ) : (
-          <RippleButton onClick={onDelete} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
-          </RippleButton>
-        )}
-      </div>
-
-      {/* iOS-like: Drag handle ≡ available only in Edit Mode */}
-      <div
-        ref={setActivatorNodeRef}
-        {...(editMode ? listeners : {})}
-        {...(editMode ? attributes : {})}
-        className={`w-10 h-10 rounded-xl flex items-center justify-center font-black transition-opacity ${
-          editMode ? 'opacity-40 hover:opacity-100 cursor-grab active:cursor-grabbing active:scale-110' : 'opacity-0 pointer-events-none'
-        }`}
-        style={{ touchAction: 'none' }}
-      >
-        ≡
+      <div className="flex items-center gap-0.5" data-no-drag>
+        <AnimatePresence mode="popLayout">
+          {!editMode ? (
+            <motion.div 
+              key="controls" 
+              initial={{ opacity: 0, scale: 0.8 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.8 }}
+              className="flex items-center"
+            >
+              <RippleButton onClick={onToggleFavorite} className={`p-2 rounded-lg transition-colors ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
+                {isFavorite ? <Icons.Star className="w-4 h-4" /> : <Icons.StarOutline className="w-4 h-4" />}
+              </RippleButton>
+              <RippleButton onClick={onEdit} className="p-2 rounded-lg text-gray-400 dark:text-gray-500 hover:text-blue-500 transition-colors">
+                <Icons.Settings className="w-4 h-4" />
+              </RippleButton>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="handle"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              ref={setActivatorNodeRef}
+              {...listeners}
+              {...attributes}
+              className="w-12 h-12 flex items-center justify-center text-gray-300 dark:text-gray-600 active:text-blue-500 cursor-grab active:cursor-grabbing"
+              style={{ touchAction: 'none' }}
+            >
+              <div className="text-xl font-bold">≡</div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
@@ -279,7 +304,7 @@ export const App: React.FC = () => {
 
   const [showPlaylist, setShowPlaylist] = useState(false);
   const [playlistFilter, setPlaylistFilter] = useState<'all' | 'favorites'>('all');
-  const [playlistEditMode, setPlaylistEditMode] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
   const [showManualImport, setShowManualImport] = useState(false);
   const [manualImportValue, setManualImportValue] = useState('');
@@ -310,19 +335,19 @@ export const App: React.FC = () => {
   // dnd-kit sensors
   const sensors = useSensors(
     useSensor(TouchSensor, {
-      activationConstraint: { delay: 150, tolerance: 8 }, // Long press like behavior for touch
+      activationConstraint: { delay: 100, tolerance: 5 }, 
     }),
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
+      activationConstraint: { distance: 5 },
     })
   );
 
   const handleTouchStart = (e: React.TouchEvent) => { 
-    if (playlistEditMode) return; // Disable pull-to-close in edit mode
+    if (editMode) return;
     touchStartRef.current = e.touches[0].clientY; 
   };
   const handleTouchEnd = (e: React.TouchEvent) => {
-    if (playlistEditMode) return;
+    if (editMode) return;
     const touchEnd = e.changedTouches[0].clientY;
     const distance = touchEnd - touchStartRef.current;
     if (distance > 70 && listRef.current && listRef.current.scrollTop <= 0) setShowPlaylist(false);
@@ -558,7 +583,7 @@ export const App: React.FC = () => {
   const closeAllModals = useCallback(() => {
     setShowEditor(false); setShowPlaylist(false); setShowConfirmModal(false);
     setShowSleepTimerModal(false); setShowAboutModal(false); setShowManualImport(false);
-    setEditingStation(null); setPlaylistEditMode(false);
+    setEditingStation(null); setEditMode(false);
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -865,7 +890,7 @@ export const App: React.FC = () => {
   }, [displayedStations, activeStationId]);
 
   // =========================
-  // dnd-kit logic for iOS Reorder
+  // dnd-kit handlers
   // =========================
   const handleDragStart = (e: DragStartEvent) => {
     hapticImpact('heavy');
@@ -1074,31 +1099,31 @@ export const App: React.FC = () => {
               animate={{ y: 0 }}
               exit={{ y: '100%' }}
               transition={{ type: 'spring', bounce: 0, duration: 0.5 }}
-              className="fixed bottom-0 left-0 right-0 h-[92vh] bg-white/95 dark:bg-black/60 rounded-t-[3.5rem] z-40 flex flex-col overflow-hidden pb-10 border-t border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[80px]"
+              className="fixed bottom-0 left-0 right-0 h-[92vh] bg-white/95 dark:bg-black/60 rounded-t-[3.5rem] z-40 flex flex-col overflow-hidden border-t border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[80px]"
             >
-              <div className="w-full flex flex-col items-center pt-6 pb-4 shrink-0 touch-none cursor-grab active:cursor-grabbing">
+              <div className="w-full flex flex-col items-center pt-6 shrink-0 touch-none" onClick={() => !editMode && setShowPlaylist(false)}>
                 <div className="w-20 h-1.5 bg-black/10 dark:bg-white/10 rounded-full mb-3" />
               </div>
 
               <div className="px-6 pb-4">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-xl font-black tracking-tight">Плейлист</h3>
-                  <RippleButton 
+                  <button
                     onClick={() => {
-                      setPlaylistEditMode(!playlistEditMode);
+                      setEditMode(!editMode);
                       hapticImpact('medium');
                     }}
-                    className={`px-4 py-2 rounded-full font-black text-sm transition-all border ${
-                      playlistEditMode ? 'text-white' : ''
+                    className={`px-4 py-1.5 rounded-full font-black text-xs transition-all border ${
+                      editMode ? 'text-white' : ''
                     }`}
                     style={{ 
-                      backgroundColor: playlistEditMode ? nativeAccentColor : 'transparent',
+                      backgroundColor: editMode ? nativeAccentColor : 'transparent',
                       borderColor: nativeAccentColor,
-                      color: playlistEditMode ? '#fff' : nativeAccentColor
+                      color: editMode ? '#fff' : nativeAccentColor
                     }}
                   >
-                    {playlistEditMode ? 'Готово' : 'Править'}
-                  </RippleButton>
+                    {editMode ? 'Готово' : 'Править'}
+                  </button>
                 </div>
                 
                 <div className="flex items-center bg-black/5 dark:bg-white/[0.04] rounded-[1.25rem] p-1.5 backdrop-blur-xl border border-white/5 transition-colors">
@@ -1140,7 +1165,7 @@ export const App: React.FC = () => {
                     >
                       <div className="space-y-0.5">
                         {stationsInPlaylist.map(s => (
-                          <SortableStationItem 
+                          <SortableStationRow 
                             key={s.id} 
                             station={s} 
                             isActive={activeStationId === s.id} 
@@ -1148,7 +1173,7 @@ export const App: React.FC = () => {
                             isFavorite={favorites.includes(s.id)} 
                             status={status} 
                             accentColor={nativeAccentColor}
-                            editMode={playlistEditMode}
+                            editMode={editMode}
                             onSelect={() => handleSelectStation(s)} 
                             onToggleFavorite={(e) => toggleFavorite(s.id, e)} 
                             onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setShowEditor(true); }} 
@@ -1164,7 +1189,7 @@ export const App: React.FC = () => {
                   </div>
                 )}
 
-                {!playlistEditMode && (
+                {!editMode && (
                   <div className="mt-8 flex flex-col gap-4 mb-safe pb-16">
                     <RippleButton onClick={() => { setEditingStation(null); setShowEditor(true); }} className="w-full p-6 rounded-[2rem] border-2 border-dashed border-black/5 dark:border-white/10 opacity-40 hover:opacity-100 font-black flex items-center justify-center gap-3 transition-all hover:bg-black/5 dark:hover:bg-white/5"><Icons.Add /> Добавить станцию</RippleButton>
                     
@@ -1176,8 +1201,8 @@ export const App: React.FC = () => {
                   </div>
                 )}
                 
-                {playlistEditMode && (
-                  <div className="mt-6 text-[10px] font-black uppercase tracking-[0.25em] opacity-30 px-1 text-center">
+                {editMode && (
+                  <div className="mt-6 text-[10px] font-black uppercase tracking-[0.25em] opacity-30 px-1 text-center pb-20">
                     Тяните за ≡ чтобы упорядочить
                   </div>
                 )}
