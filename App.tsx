@@ -1,9 +1,10 @@
 
-// Build: 2.9.22
+// Build: 2.9.24
+// - Feature: Exported JSON in clipboard is now wrapped in Markdown code blocks (```json ... ```).
+// - Feature: Added Station Homepage Link button in the bottom-left corner of the cover.
 // - Feature: Dedicated Import Modal (matching Export UI) with source selection.
 // - Feature: Smart JSON extraction from raw text (finds JSON inside messages).
 // - Security: Added strict data validation and sanitization for imports.
-// - Fix: Eliminated cover flickering and refined Silk Reflection effect.
 // - UI: Unified Import/Export modal styles.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -22,7 +23,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.22";
+const APP_VERSION = "2.9.24";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -47,7 +48,7 @@ const extractJsonFromText = (text: string): any => {
     if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
       startIdx = firstBrace;
       endChar = '}';
-    } else if (firstBracket !== -1) {
+    } else if (firstBracket === -1) {
       startIdx = firstBracket;
       endChar = ']';
     }
@@ -81,7 +82,8 @@ const StationCover: React.FC<{
   station: Partial<Station> | null | undefined; 
   className?: string; 
   showTags?: boolean;
-}> = ({ station, className = "", showTags = true }) => {
+  showLink?: boolean;
+}> = ({ station, className = "", showTags = true, showLink = true }) => {
   const [hasError, setHasError] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const mediaRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
@@ -115,10 +117,31 @@ const StationCover: React.FC<{
     );
   };
 
+  const renderLink = () => {
+    if (!showLink || !station?.homepageUrl) return null;
+    return (
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          if ((window as any).Telegram?.WebApp?.openLink) {
+            (window as any).Telegram.WebApp.openLink(station.homepageUrl);
+          } else {
+            window.open(station.homepageUrl, '_blank');
+          }
+        }}
+        className="absolute bottom-4 left-4 z-30 flex items-center gap-1.5 px-2.5 py-1.5 bg-black/40 backdrop-blur-md text-white rounded-lg border border-white/10 text-[8px] font-black uppercase tracking-wider transition-all active:scale-95 hover:bg-black/60 shadow-lg"
+      >
+        <Icons.Globe className="w-2.5 h-2.5" />
+        Сайт
+      </button>
+    );
+  };
+
   if (!station?.coverUrl || hasError) {
     return (
       <div className={`${className} bg-blue-600 flex items-center justify-center text-white text-5xl font-black select-none relative overflow-hidden`}>
         {renderTags()}
+        {renderLink()}
         <span className="text-7xl">{station?.name?.charAt(0)?.toUpperCase?.() || 'R'}</span>
       </div>
     );
@@ -127,6 +150,7 @@ const StationCover: React.FC<{
   return (
     <div className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}>
       {renderTags()}
+      {renderLink()}
       
       {isVideo ? (
         <motion.video
@@ -207,7 +231,7 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         </div>
       )}
       <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-xl bg-gray-100 dark:bg-[#252525] pointer-events-none">
-        <StationCover station={station} className="w-full h-full" showTags={false} />
+        <StationCover station={station} className="w-full h-full" showTags={false} showLink={false} />
         <AnimatePresence>
           {isPlaying && (status === 'playing' || status === 'loading') && !isEditMode && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}><MiniEqualizer /></motion.div>
@@ -549,7 +573,8 @@ export const App: React.FC = () => {
   const handleExportToClipboard = useCallback(() => {
     const schema = createExportSchema();
     const stationListText = stations.map(s => `- ${s.name}`).join('\n');
-    const fullText = `🤖 @mdsradibot Station List:\n\n${stationListText}\n\n${JSON.stringify(schema, null, 2)}`;
+    // Wrap JSON in Markdown code block
+    const fullText = `🤖 @mdsradibot Station List:\n\n${stationListText}\n\n\`\`\`json\n${JSON.stringify(schema, null, 2)}\n\`\`\``;
     
     navigator.clipboard.writeText(fullText)
       .then(() => {
@@ -918,6 +943,7 @@ export const App: React.FC = () => {
                         station={{ name: 'Preview', coverUrl: editorCoverPreview }} 
                         className="w-full h-full" 
                         showTags={false} 
+                        showLink={false}
                       />
                    ) : (
                       <Icons.Add className="w-8 h-8 opacity-20" />
