@@ -1,10 +1,10 @@
 
-// Build: 2.9.15
+// Build: 2.9.16
+// - UI: Added "Flash Overlay" effect when toggling play/pause for visual feedback.
 // - UI: Removed headers from Station Editor (Edit/New) for a cleaner look.
 // - UI: Added "Clear All" button to playlist (visible in Edit Mode).
-// - UI: Updated "Export to Clipboard" to include 🤖 @mdsradibot Station List prefix and formatted names.
-// - UI: Removed equalizer and darkening overlay from main covers.
-// - UI: Empty State view with demo list loading.
+// - UI: Updated "Export to Clipboard" to include 🤖 @mdsradibot Station List prefix.
+// - UI: Support for JPG, PNG, WEBP, SVG, MOV, MP4 in covers.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -22,7 +22,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.15";
+const APP_VERSION = "2.9.16";
 
 // Helper to detect video format support
 const isVideoUrl = (url: string | undefined): boolean => {
@@ -641,10 +641,22 @@ export const App: React.FC = () => {
                     >
                       <motion.div
                         animate={{ scale: 1 }}
-                        className="w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-colors duration-700"
+                        className="w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-colors duration-700 relative"
                         style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}
                       >
                         <StationCover station={station} className="w-full h-full" />
+                        
+                        {/* Flash Overlay Effect on Play/Pause */}
+                        {activeStationId === station.id && (
+                          <motion.div
+                            key={`flash-${actionTrigger}`}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: [0, 0.4, 0] }}
+                            transition={{ duration: 0.4, ease: "easeOut" }}
+                            className="absolute inset-0 bg-white pointer-events-none z-40"
+                          />
+                        )}
+
                         <div className="absolute bottom-6 right-6 z-30" onClick={(e) => { e.stopPropagation(); toggleFavorite(station.id, e); }}>
                           <RippleButton className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${favorites.includes(station.id) ? 'bg-amber-500 text-white scale-105 shadow-lg shadow-amber-500/30' : 'bg-black/30 text-white/60'}`}>
                             {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
