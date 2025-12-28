@@ -1,9 +1,9 @@
-/* index.css (или ваш глобальный файл стилей) */
+/* index.css / app.css */
+
 /* Base styles and Tailwind shadow variables fix */
 :root {
   --swiper-theme-color: #2563eb;
 
-  /* Reset Tailwind shadow variables to prevent undefined behavior */
   --tw-ring-offset-shadow: 0 0 #0000;
   --tw-ring-shadow: 0 0 #0000;
   --tw-shadow: 0 0 #0000;
@@ -27,13 +27,13 @@ body {
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .dark .stylish-scroll {
   scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
-/* Webkit-based browsers (Chrome, Safari, Telegram, Android Webview) */
 .stylish-scroll::-webkit-scrollbar {
   display: block !important;
   width: 3px !important;
@@ -64,7 +64,11 @@ body {
   background-color: rgba(255, 255, 255, 0.25) !important;
 }
 
-/* Скрываем скроллбар, когда список не активен (на некоторых браузерах) */
 .stylish-scroll:not(:hover)::-webkit-scrollbar-thumb {
   background-color: transparent !important;
+}
+
+/* Optional: harden vertical scroll feel on touch devices */
+.stylish-scroll {
+  touch-action: pan-y;
 }
