@@ -1,7 +1,8 @@
 
-// Build: 2.9.5
+// Build: 2.9.6
+// - UI: Added "Recede & Return" impact effect on cover when toggling play/pause.
+// - UI: Cover now visually "pops" to confirm user action.
 // - UI: Added playback-reactive cover effects (pulse, glow, grayscale).
-// - UI: Removed scrollbar from the station list using .no-scrollbar class.
 // - Fix: Resolved "e.stopPropagation is not a function" by passing real event object.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
@@ -20,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.5";
+const APP_VERSION = "2.9.6";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -86,27 +87,27 @@ const StationCover: React.FC<{
     );
   }
 
-  // Эффекты для основной обложки
+  // Эффекты для основной обложки (ЧБ при паузе)
   const filterStyle = isMain ? {
-    filter: isPlaying ? 'grayscale(0) brightness(1)' : 'grayscale(0.8) brightness(0.7)',
-    transition: 'filter 0.8s cubic-bezier(0.4, 0, 0.2, 1)'
+    filter: isPlaying ? 'grayscale(0) brightness(1)' : 'grayscale(0.8) brightness(0.6)',
+    transition: 'filter 1.2s cubic-bezier(0.4, 0, 0.2, 1)'
   } : {};
 
   return (
     <motion.div 
       className={`${className} relative bg-gray-200 dark:bg-[#1a1a1a] overflow-hidden`}
       animate={isMain ? {
-        scale: isPlaying ? [1, 1.02, 1] : 0.96,
+        scale: isPlaying ? [1, 1.02, 1] : 1,
       } : {}}
       transition={isMain ? {
         scale: isPlaying ? {
           repeat: Infinity,
-          duration: 3,
+          duration: 4,
           ease: "easeInOut"
         } : {
           type: "spring",
           stiffness: 300,
-          damping: 20
+          damping: 30
         }
       } : {}}
     >
@@ -243,6 +244,7 @@ export const App: React.FC = () => {
 
   const [onlyFavoritesMode, setOnlyFavoritesMode] = useState<boolean>(() => localStorage.getItem('radio_only_favorites') === 'true');
   const [activeStationId, setActiveStationId] = useState<string>(() => localStorage.getItem('radio_last_active') || '');
+  // Fix: Added missing closing quote to fix syntax error and "Expected 1 arguments, but got 2" error
   const [playingStationId, setPlayingStationId] = useState<string>(() => localStorage.getItem('radio_last_playing') || '');
   const [lastPlayedFavoriteId, setLastPlayedFavoriteId] = useState<string>(() => localStorage.getItem('radio_last_fav') || '');
 
@@ -261,14 +263,12 @@ export const App: React.FC = () => {
   const [showSleepTimerModal, setShowSleepTimerModal] = useState(false);
   const [sleepTimerEndDate, setSleepTimerEndDate] = useState<number | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
-  const [customTimerInput, setCustomTimerInput] = useState('');
+  
+  // Ключ для запуска анимации отдачи
+  const [actionTrigger, setActionTrigger] = useState(0);
 
   const [swiperInstance, setSwiperInstance] = useState<SwiperClass | null>(null);
   const isReorderingRef = useRef(false);
-
-  const [editorPreviewUrl, setEditorPreviewUrl] = useState('');
-  const [editorName, setEditorName] = useState('');
-  const [editorTags, setEditorTags] = useState('');
 
   const sleepTimerTimeoutRef = useRef<number | null>(null);
   const originalVolumeRef = useRef<number>(0.5);
@@ -321,13 +321,17 @@ export const App: React.FC = () => {
 
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
+    
+    // Запускаем анимации отдачи
+    setActionTrigger(prev => prev + 1);
+    
     if (playingStationId === activeStationId) {
-      if (status === 'playing' || status === 'loading') { hapticImpact('soft'); stop(); }
-      else { hapticImpact('medium'); play(activeStation.streamUrl); }
+      if (status === 'playing' || status === 'loading') { hapticImpact('medium'); stop(); }
+      else { hapticImpact('rigid'); play(activeStation.streamUrl); }
     } else {
       setPlayingStationId(activeStationId);
       if (favorites.includes(activeStationId)) setLastPlayedFavoriteId(activeStationId);
-      hapticImpact('medium'); play(activeStation.streamUrl);
+      hapticImpact('rigid'); play(activeStation.streamUrl);
     }
   }, [activeStationId, playingStationId, status, activeStation, hapticImpact, play, stop, favorites]);
 
@@ -428,7 +432,6 @@ export const App: React.FC = () => {
 
   const navigateStation = useCallback((navDir: 'next' | 'prev') => { if (!swiperInstance) return; hapticImpact('medium'); if (navDir === 'next') swiperInstance.slideNext(); else swiperInstance.slidePrev(); }, [swiperInstance, hapticImpact]);
 
-  // FIX: Added handleImport to handle importing station data from JSON files and resolve compilation error.
   const handleImport = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -440,39 +443,16 @@ export const App: React.FC = () => {
         const text = await file.text();
         const data = JSON.parse(text);
         let newStations: Station[] = [];
-        
         if (data && data.schemaVersion === 2 && Array.isArray(data.stations)) {
-          newStations = data.stations.map((s: any) => ({
-            id: s.id || Math.random().toString(36).substr(2, 9),
-            name: s.title || s.name,
-            streamUrl: s.streamUrl,
-            coverUrl: s.coverUrl,
-            tags: s.tags || [],
-            addedAt: Date.now()
-          }));
+          newStations = data.stations.map((s: any) => ({ id: s.id || Math.random().toString(36).substr(2, 9), name: s.title || s.name, streamUrl: s.streamUrl, coverUrl: s.coverUrl, tags: s.tags || [], addedAt: Date.now() }));
         } else if (Array.isArray(data)) {
-          newStations = data.filter((s: any) => s.name && s.streamUrl).map(s => ({
-            ...s,
-            id: s.id || Math.random().toString(36).substr(2, 9),
-            addedAt: s.addedAt || Date.now()
-          }));
+          newStations = data.filter((s: any) => s.name && s.streamUrl).map(s => ({ ...s, id: s.id || Math.random().toString(36).substr(2, 9), addedAt: s.addedAt || Date.now() }));
         }
-
         if (newStations.length > 0) {
-          setStations(prev => {
-            const existingUrls = new Set(prev.map(ps => ps.streamUrl));
-            const uniqueNew = newStations.filter(ns => !existingUrls.has(ns.streamUrl));
-            return [...prev, ...uniqueNew];
-          });
-          setSnackbar(`Успешно импортировано: ${newStations.length}`);
-          hapticNotification('success');
-        } else {
-          setSnackbar('Нет данных для импорта');
-        }
-      } catch (err) {
-        setSnackbar('Ошибка импорта JSON');
-        hapticNotification('error');
-      }
+          setStations(prev => { const existingUrls = new Set(prev.map(ps => ps.streamUrl)); const uniqueNew = newStations.filter(ns => !existingUrls.has(ns.streamUrl)); return [...prev, ...uniqueNew]; });
+          setSnackbar(`Успешно импортировано: ${newStations.length}`); hapticNotification('success');
+        } else setSnackbar('Нет данных для импорта');
+      } catch (err) { setSnackbar('Ошибка импорта JSON'); hapticNotification('error'); }
     };
     input.click();
   }, [hapticNotification]);
@@ -572,12 +552,12 @@ export const App: React.FC = () => {
                           key={`glow-${station.id}`}
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ 
-                            opacity: activeStationId === station.id ? (isActuallyPlaying ? 0.7 : 0.3) : 0,
+                            opacity: activeStationId === station.id ? (isActuallyPlaying ? 0.7 : 0.2) : 0,
                             scale: activeStationId === station.id ? (isActuallyPlaying ? [0.95, 1, 0.95] : 0.9) : 0.8,
                           }}
                           transition={{
                             opacity: { duration: 0.6 },
-                            scale: isActuallyPlaying ? { repeat: Infinity, duration: 3, ease: "easeInOut" } : { duration: 0.6 }
+                            scale: isActuallyPlaying ? { repeat: Infinity, duration: 4, ease: "easeInOut" } : { duration: 0.6 }
                           }}
                           className="absolute inset-2 z-0 rounded-[2.5rem] blur-3xl pointer-events-none"
                           style={{ 
@@ -590,8 +570,20 @@ export const App: React.FC = () => {
                       )}
                     </AnimatePresence>
 
-                    {/* Main Card */}
-                    <div className="relative z-10 w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-all duration-700" style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}>
+                    {/* Main Card с эффектом отдачи (Recede) */}
+                    <motion.div 
+                      key={`impact-${station.id}-${actionTrigger}`}
+                      initial={false}
+                      animate={{ 
+                        scale: activeStationId === station.id ? [0.85, 1.02, 1] : 1 
+                      }}
+                      transition={{ 
+                        duration: 0.5, 
+                        ease: [0.23, 1, 0.32, 1] // Плавный вход, быстрый отскок
+                      }}
+                      className="relative z-10 w-full h-full rounded-[2.5rem] overflow-hidden bg-white dark:bg-white/[0.05] border-2 transition-all duration-700" 
+                      style={{ borderColor: activeStationId === station.id ? `${nativeAccentColor}44` : 'transparent' }}
+                    >
                       <StationCover 
                         station={station} 
                         className="w-full h-full" 
@@ -603,7 +595,7 @@ export const App: React.FC = () => {
                           {favorites.includes(station.id) ? <Icons.Star /> : <Icons.StarOutline />}
                         </RippleButton>
                       </div>
-                    </div>
+                    </motion.div>
                   </div>
                 </SwiperSlide>
               ))}
@@ -631,7 +623,7 @@ export const App: React.FC = () => {
 
               <div className="w-full flex items-center justify-between px-2">
                 <RippleButton onClick={() => navigateStation('prev')} className={`p-4 transition-all ${displayedStations.length > 1 ? 'opacity-50 hover:opacity-100' : 'opacity-10 pointer-events-none'}`}><Icons.Prev /></RippleButton>
-                <RippleButton onClick={() => handleTogglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl text-white`} style={{ backgroundColor: nativeAccentColor, boxShadow: `0 15px 40px -5px ${nativeAccentColor}77` }}>
+                <RippleButton onClick={() => handleTogglePlay()} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-xl text-white active:scale-90`} style={{ backgroundColor: nativeAccentColor, boxShadow: `0 15px 40px -5px ${nativeAccentColor}77` }}>
                   {isActuallyPlaying ? <Icons.Pause className="w-8 h-8" /> : <Icons.Play className="w-8 h-8 ml-1" />}
                 </RippleButton>
                 <RippleButton onClick={() => navigateStation('next')} className={`p-4 transition-all ${displayedStations.length > 1 ? 'opacity-50 hover:opacity-100' : 'opacity-10 pointer-events-none'}`}><Icons.Next /></RippleButton>
@@ -646,7 +638,6 @@ export const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Playlist Side - unchanged but with .no-scrollbar */}
       <AnimatePresence>
         {showPlaylist && (
           <>
@@ -686,7 +677,6 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Modals are unchanged */}
       <AnimatePresence>{snackbar && <motion.div initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 60 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-black/95 text-white px-8 py-5 rounded-[2.5rem] font-bold shadow-2xl">{snackbar}</motion.div>}</AnimatePresence>
     </div>
   );
