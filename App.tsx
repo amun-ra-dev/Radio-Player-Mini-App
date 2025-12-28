@@ -1,8 +1,8 @@
 
-// Build: 2.7.0
-// - Feature: Dedicated Playlist Edit Mode.
-// - UI: Separate layouts for browsing and managing stations in the playlist.
-// - Interaction: Reordering only available in Edit Mode.
+// Build: 2.8.0
+// - Feature: Smooth playlist reordering.
+// - UI: Clean playlist header with "Edit" button in top-right.
+// - UX: No "Close" button, use swipe or Back button.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -20,7 +20,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.7.0";
+const APP_VERSION = "2.8.0";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -170,21 +170,36 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       value={station}
       dragListener={isEditMode}
       dragControls={controls}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      onDragStart={() => { setIsDragging(true); hapticImpact('medium'); }}
+      layout
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      transition={{ 
+        type: "spring", 
+        stiffness: 400, 
+        damping: 40,
+        layout: { duration: 0.25 }
+      }}
+      onDragStart={() => { 
+        setIsDragging(true); 
+        hapticImpact('light'); 
+      }}
       onDragEnd={() => setIsDragging(false)}
-      whileDrag={{ scale: 1.02, zIndex: 100, backgroundColor: "var(--tg-theme-secondary-bg-color, #2c2c2c)", boxShadow: "none" }}
+      whileDrag={{ 
+        scale: 1.04, 
+        zIndex: 100, 
+        backgroundColor: "var(--tg-theme-secondary-bg-color, #f0f0f0)",
+        boxShadow: "0 10px 30px -10px rgba(0,0,0,0.15)"
+      }}
       className={`flex items-center gap-3 p-2 mb-2 rounded-[1.25rem] transition-all group relative border-2 ${isActive && !isEditMode ? 'bg-blue-100/30 dark:bg-white/[0.08] border-blue-200/50 dark:border-white/20' : 'bg-white dark:bg-white/[0.015] border-transparent'} ${isEditMode ? 'cursor-default' : 'cursor-pointer active:scale-[0.98]'} shadow-sm`}
       onClick={() => !isDragging && (isEditMode ? onEdit({} as any) : onSelect())}
     >
       {isEditMode && (
         <div 
-          className="p-2 cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-600"
+          className="p-3 cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-600 flex items-center justify-center shrink-0"
           onPointerDown={(e) => controls.start(e)}
         >
-          <Icons.Drag />
+          <Icons.Drag className="w-6 h-6" />
         </div>
       )}
 
@@ -214,13 +229,13 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
       <div className="flex gap-0.5 ml-auto pr-1">
         <AnimatePresence mode="wait">
           {!isEditMode ? (
-            <motion.div key="fav" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
+            <motion.div key="fav" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}>
               <RippleButton onClick={(e) => { e.stopPropagation(); onToggleFavorite(e); }} className={`p-2.5 rounded-xl ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
                 {isFavorite ? <Icons.Star /> : <Icons.StarOutline />}
               </RippleButton>
             </motion.div>
           ) : (
-            <motion.div key="edit" initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="flex gap-0.5">
+            <motion.div key="edit" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className="flex gap-0.5">
               <RippleButton onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors hover:text-blue-500"><Icons.Settings /></RippleButton>
               <RippleButton onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
                 <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
@@ -411,9 +426,6 @@ export const App: React.FC = () => {
   const handleReorder = (reorderedItems: Station[]) => {
     isReorderingRef.current = true;
     
-    // Create mapping of original full list
-    const reorderedIds = new Set(reorderedItems.map(item => item.id));
-    
     // If we are reordering in "All" filter
     if (playlistFilter === 'all') {
       setStations(reorderedItems);
@@ -429,8 +441,11 @@ export const App: React.FC = () => {
       setStations(newStations);
     }
     
+    // Only light haptic for smooth feel
     hapticImpact('light');
-    setTimeout(() => { isReorderingRef.current = false; }, 150);
+    
+    // Release lock after small delay to let state settle
+    setTimeout(() => { isReorderingRef.current = false; }, 50);
   };
 
   const toggleFavorite = useCallback((id: string, e?: React.MouseEvent) => {
@@ -1067,21 +1082,22 @@ export const App: React.FC = () => {
               transition={{ type: 'spring', bounce: 0, duration: 0.5 }} 
               className="fixed bottom-0 left-0 right-0 h-[92vh] bg-white/95 dark:bg-black/60 rounded-t-[3.5rem] z-40 flex flex-col overflow-hidden pb-10 border-t border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[80px]"
             >
-              <div className="w-full flex items-center justify-between px-8 pt-6 pb-2 shrink-0 touch-none">
-                <button 
-                  onClick={() => setIsPlaylistEditMode(!isPlaylistEditMode)}
-                  className="text-sm font-bold transition-opacity hover:opacity-70"
-                  style={{ color: nativeAccentColor }}
-                >
-                  {isPlaylistEditMode ? 'Готово' : 'Изм.'}
-                </button>
+              {/* Playlist Header: Reordered and Cleaned */}
+              <div className="w-full flex items-center justify-between px-8 pt-7 pb-3 shrink-0 touch-none">
+                <div className="w-20" /> {/* Spacer */}
                 <div className="w-12 h-1.5 bg-black/10 dark:bg-white/10 rounded-full cursor-grab active:cursor-grabbing" onPointerDown={(e) => !isPlaylistEditMode && dragControls.start(e)} />
-                <button 
-                  onClick={closeAllModals}
-                  className="text-sm font-bold opacity-40 hover:opacity-100"
-                >
-                  Закрыть
-                </button>
+                <div className="w-24 text-right">
+                  <button 
+                    onClick={() => {
+                      hapticImpact('medium');
+                      setIsPlaylistEditMode(!isPlaylistEditMode);
+                    }}
+                    className="text-sm font-bold transition-all active:scale-95"
+                    style={{ color: nativeAccentColor }}
+                  >
+                    {isPlaylistEditMode ? 'Готово' : 'Редактировать'}
+                  </button>
+                </div>
               </div>
 
               <div className="px-6 py-4">
@@ -1109,7 +1125,12 @@ export const App: React.FC = () => {
 
               <div ref={listRef} className="flex-1 overflow-y-auto px-6 flex flex-col overscroll-contain" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
                 {stationsInPlaylist.length > 0 ? (
-                  <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-2">
+                  <ReorderGroup 
+                    axis="y" 
+                    values={stationsInPlaylist} 
+                    onReorder={handleReorder} 
+                    className="space-y-2 pb-10"
+                  >
                     {stationsInPlaylist.map(s => (
                         <ReorderableStationItem 
                             key={s.id} 
