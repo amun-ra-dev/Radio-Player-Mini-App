@@ -1,8 +1,8 @@
 
-// Build: 2.8.7
-// - Feature: Dynamic Color Shadow (Glow) derived from station cover edges.
-// - UI: Improved main page visual depth with blurred background layers.
-// - UX: Maintained smooth reordering and pill-button edit toggle.
+// Build: 2.8.8
+// - Feature: Updated playlist item layout (Cover, Name, Tags).
+// - UI: Restored favorite button in edit mode.
+// - UX: Maintained smooth reordering and pill-button toggle.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -20,7 +20,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.8.7";
+const APP_VERSION = "2.8.8";
 
 const MiniEqualizer: React.FC = () => (
   <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
@@ -226,23 +226,35 @@ const ReorderableStationItem: React.FC<ReorderItemProps> = ({
         </div>
       </div>
 
-      <div className="flex gap-0.5 ml-auto pr-1">
-        <AnimatePresence mode="wait">
-          {!isEditMode ? (
-            <motion.div key="fav" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}>
-              <RippleButton onClick={(e) => { e.stopPropagation(); onToggleFavorite(e); }} className={`p-2.5 rounded-xl ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}>
-                {isFavorite ? <Icons.Star /> : <Icons.StarOutline />}
-              </RippleButton>
-            </motion.div>
-          ) : (
-            <motion.div key="edit" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }} className="flex gap-0.5">
-              <RippleButton onClick={(e) => { e.stopPropagation(); onEdit(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors hover:text-blue-500"><Icons.Settings /></RippleButton>
-              <RippleButton onClick={(e) => { e.stopPropagation(); onDelete(e); }} className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors">
-                <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
-              </RippleButton>
-            </motion.div>
-          )}
-        </AnimatePresence>
+      <div className="flex items-center gap-0.5 ml-auto pr-1">
+        {/* Favorite button always visible as requested */}
+        <RippleButton 
+          onClick={(e) => { e.stopPropagation(); onToggleFavorite(e); }} 
+          className={`p-2.5 rounded-xl transition-colors ${isFavorite ? 'text-amber-500' : 'text-gray-300 dark:text-gray-600'}`}
+        >
+          {isFavorite ? <Icons.Star /> : <Icons.StarOutline />}
+        </RippleButton>
+
+        {isEditMode && (
+          <motion.div 
+            initial={{ opacity: 0, x: 10 }} 
+            animate={{ opacity: 1, x: 0 }} 
+            className="flex gap-0.5"
+          >
+            <RippleButton 
+              onClick={(e) => { e.stopPropagation(); onEdit(e); }} 
+              className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 transition-colors hover:text-blue-500"
+            >
+              <Icons.Settings />
+            </RippleButton>
+            <RippleButton 
+              onClick={(e) => { e.stopPropagation(); onDelete(e); }} 
+              className="p-2.5 rounded-xl text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" /></svg>
+            </RippleButton>
+          </motion.div>
+        )}
       </div>
     </ReorderItem>
   );
@@ -1105,9 +1117,9 @@ export const App: React.FC = () => {
               transition={{ type: 'spring', bounce: 0, duration: 0.5 }} 
               className="fixed bottom-0 left-0 right-0 h-[92vh] bg-white/95 dark:bg-black/60 rounded-t-[3.5rem] z-40 flex flex-col overflow-hidden pb-10 border-t border-white/20 dark:border-white/10 shadow-2xl backdrop-blur-[80px]"
             >
-              {/* Playlist Header: Button-style Toggle in Top Right */}
+              {/* Playlist Header */}
               <div className="w-full flex items-center justify-between px-8 pt-7 pb-3 shrink-0 touch-none">
-                <div className="w-32" /> {/* Balanced Spacer for Right Alignment */}
+                <div className="w-32" /> 
                 <div className="w-12 h-1.5 bg-black/10 dark:bg-white/10 rounded-full cursor-grab active:cursor-grabbing" onPointerDown={(e) => !isPlaylistEditMode && dragControls.start(e)} />
                 <div className="w-32 text-right">
                   <RippleButton 
