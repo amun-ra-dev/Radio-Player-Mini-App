@@ -1,9 +1,9 @@
 
-// Build: 2.9.40
+// Build: 2.9.42
+// - UI: Unified font size (text-base) for all empty state buttons.
 // - UI: Added fallback manual text input for imports when clipboard access is denied.
-// - UI: Unified font size (кегль) for buttons on the main screen empty state.
-// - Interaction: Reordering works by dragging anywhere on the item in edit mode.
-// - Fix: Keyboard overlap protection and robust import logic.
+// - Logic: Improved playlist track reproduction stability.
+// - Logic: Integrated direct URL passing to useAudio's play method for instant switching.
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls } from 'framer-motion';
@@ -21,7 +21,7 @@ import { Logo } from './components/UI/Logo.tsx';
 const ReorderGroup = Reorder.Group as any;
 const ReorderItem = Reorder.Item as any;
 
-const APP_VERSION = "2.9.40";
+const APP_VERSION = "2.9.42";
 
 const isVideoUrl = (url: string | undefined): boolean => {
   if (!url) return false;
@@ -350,13 +350,20 @@ export const App: React.FC = () => {
   const handleTogglePlay = useCallback(() => {
     if (!activeStation) return;
     setActionTrigger(prev => prev + 1);
+    
     if (playingStationId === activeStationId) {
-      if (status === 'playing' || status === 'loading') { hapticImpact('medium'); stop(); }
-      else { hapticImpact('rigid'); play(); }
+      if (status === 'playing' || status === 'loading') { 
+        hapticImpact('medium'); 
+        stop(); 
+      } else { 
+        hapticImpact('rigid'); 
+        play(activeStation.streamUrl, activeStation); 
+      }
     } else {
       setPlayingStationId(activeStationId);
       if (favorites.includes(activeStationId)) setLastPlayedFavoriteId(activeStationId);
-      hapticImpact('rigid'); play();
+      hapticImpact('rigid'); 
+      play(activeStation.streamUrl, activeStation);
     }
   }, [activeStationId, playingStationId, status, activeStation, hapticImpact, play, stop, favorites]);
 
@@ -438,7 +445,14 @@ export const App: React.FC = () => {
         if (favStations.length > 0) {
           const currentIndex = stations.findIndex(s => s.id === id);
           const nextFav = favStations.find(s => stations.findIndex(st => st.id === s.id) > currentIndex) || favStations[0];
-          setTimeout(() => { setActiveStationId(nextFav.id); if (status === 'playing' || status === 'loading') { setPlayingStationId(nextFav.id); setLastPlayedFavoriteId(nextFav.id); play(); } }, 0);
+          setTimeout(() => { 
+            setActiveStationId(nextFav.id); 
+            if (status === 'playing' || status === 'loading') { 
+              setPlayingStationId(nextFav.id); 
+              setLastPlayedFavoriteId(nextFav.id); 
+              play(nextFav.streamUrl, nextFav); 
+            } 
+          }, 0);
         }
       } else if (!isFavNow) setLastPlayedFavoriteId(id);
       return nextFavs;
@@ -454,6 +468,7 @@ export const App: React.FC = () => {
     isReorderingRef.current = true;
     setOnlyFavoritesMode(nextMode); hapticImpact('medium');
     setSnackbar(nextMode ? 'Режим избранного: ВКЛ' : 'Режим избранного: ВЫКЛ');
+    
     if (nextMode) {
       const currentIsFav = favorites.includes(prevActiveId);
       if (!currentIsFav) {
@@ -463,11 +478,23 @@ export const App: React.FC = () => {
           const fallbackStation = favList.find(s => s.id === fallbackId) || favList[0];
           targetStationId = fallbackStation.id;
           setActiveStationId(targetStationId);
-          if (status === 'playing' || status === 'loading') { setPlayingStationId(targetStationId); setLastPlayedFavoriteId(targetStationId); play(); }
+          if (status === 'playing' || status === 'loading') { 
+            setPlayingStationId(targetStationId); 
+            setLastPlayedFavoriteId(targetStationId); 
+            play(fallbackStation.streamUrl, fallbackStation); 
+          }
         }
       }
     }
-    setTimeout(() => { if (swiperInstance) { const newList = nextMode ? stations.filter(s => favorites.includes(s.id)) : stations; const newIdx = newList.findIndex(s => s.id === targetStationId); if (newIdx !== -1) swiperInstance.slideToLoop(newIdx, 0); } setTimeout(() => { isReorderingRef.current = false; }, 300); }, 0);
+    
+    setTimeout(() => { 
+      if (swiperInstance) { 
+        const newList = nextMode ? stations.filter(s => favorites.includes(s.id)) : stations; 
+        const newIdx = newList.findIndex(s => s.id === targetStationId); 
+        if (newIdx !== -1) swiperInstance.slideToLoop(newIdx, 0); 
+      } 
+      setTimeout(() => { isReorderingRef.current = false; }, 300); 
+    }, 0);
   }, [onlyFavoritesMode, hapticImpact, hapticNotification, hasStations, hasFavorites, stations, favorites, activeStationId, lastPlayedFavoriteId, status, play, swiperInstance]);
 
   const handleImportFromClipboard = useCallback(async () => {
@@ -678,7 +705,7 @@ export const App: React.FC = () => {
                     if (targetStation.id !== playingStationId) {
                       setPlayingStationId(targetStation.id);
                       if (favorites.includes(targetStation.id)) setLastPlayedFavoriteId(targetStation.id);
-                      play(); 
+                      play(targetStation.streamUrl, targetStation); 
                     }
                   }
                 }
@@ -794,7 +821,7 @@ export const App: React.FC = () => {
                 {stationsInPlaylist.length > 0 ? (
                   <ReorderGroup axis="y" values={stationsInPlaylist} onReorder={handleReorder} className="space-y-2 pb-10">
                     {stationsInPlaylist.map(s => (
-                        <ReorderableStationItem key={s.id} station={s} isActive={activeStationId === s.id} isPlaying={playingStationId === s.id} isFavorite={favorites.includes(s.id)} isEditMode={isPlaylistEditMode} status={status} accentColor={nativeAccentColor} destructiveColor={nativeDestructiveColor} hapticImpact={hapticImpact} onSelect={() => { if (playingStationId === s.id && (status === 'playing' || status === 'loading')) { stop(); } else { setActiveStationId(s.id); setPlayingStationId(s.id); if (favorites.includes(s.id)) setLastPlayedFavoriteId(s.id); play(); } }} onToggleFavorite={(e) => toggleFavorite(s.id, e)} onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setEditorCoverPreview(s.coverUrl || ''); setShowEditor(true); }} onDelete={(e) => handleDelete(s.id, e)} />
+                        <ReorderableStationItem key={s.id} station={s} isActive={activeStationId === s.id} isPlaying={playingStationId === s.id} isFavorite={favorites.includes(s.id)} isEditMode={isPlaylistEditMode} status={status} accentColor={nativeAccentColor} destructiveColor={nativeDestructiveColor} hapticImpact={hapticImpact} onSelect={() => { if (playingStationId === s.id && (status === 'playing' || status === 'loading')) { stop(); } else { setActiveStationId(s.id); setPlayingStationId(s.id); if (favorites.includes(s.id)) setLastPlayedFavoriteId(s.id); if (swiperInstance) { const targetIdx = displayedStations.findIndex(ds => ds.id === s.id); if (targetIdx !== -1) swiperInstance.slideToLoop(targetIdx); } play(s.streamUrl, s); } }} onToggleFavorite={(e) => toggleFavorite(s.id, e)} onEdit={(e) => { e.stopPropagation(); setEditingStation(s); setEditorCoverPreview(s.coverUrl || ''); setShowEditor(true); }} onDelete={(e) => handleDelete(s.id, e)} />
                     ))}
                   </ReorderGroup>
                 ) : <div className="flex-1 flex flex-col items-center justify-center text-center p-10 font-black opacity-30 text-xl">Плейлист пуст</div>}
@@ -861,7 +888,7 @@ export const App: React.FC = () => {
               <div className="space-y-4">
                 {!showManualImportArea ? (
                   <>
-                    <RippleButton onClick={handleImportFromClipboard} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}>
+                    <RippleButton onClick={handleImportFromClipboard} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3 text-base" style={{ backgroundColor: nativeAccentColor }}>
                       <Icons.Paste /> Вставить из буфера
                     </RippleButton>
                     <RippleButton onClick={() => setShowManualImportArea(true)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-40 text-xs">
@@ -880,14 +907,14 @@ export const App: React.FC = () => {
                     <RippleButton 
                       onClick={handleManualImport} 
                       disabled={!manualImportText.trim()}
-                      className="w-full py-4 text-white rounded-2xl font-black shadow-lg disabled:opacity-20 transition-opacity"
+                      className="w-full py-4 text-white rounded-2xl font-black shadow-lg disabled:opacity-20 transition-opacity text-base"
                       style={{ backgroundColor: nativeAccentColor }}
                     >
                       Импортировать текст
                     </RippleButton>
                   </motion.div>
                 )}
-                <RippleButton onClick={() => { if(showManualImportArea) { setShowManualImportArea(false); } else { setShowImportModal(false); } }} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">
+                <RippleButton onClick={() => { if(showManualImportArea) { setShowManualImportArea(false); } else { setShowImportModal(false); } }} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60 text-base">
                   {showManualImportArea ? 'Назад' : 'Отмена'}
                 </RippleButton>
               </div>
@@ -895,8 +922,8 @@ export const App: React.FC = () => {
           </motion.div>
         </div>
       )}</AnimatePresence>
-      <AnimatePresence>{showExportModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowExportModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><h2 className="text-2xl font-black mb-4">Экспорт в буфер</h2><p className="opacity-60 text-sm mb-6 font-medium">Выберите, какие станции скопировать в буфер обмена.</p><div className="space-y-3"><RippleButton onClick={() => handleExportToClipboard('all')} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3" style={{ backgroundColor: nativeAccentColor }}><Icons.Copy /> Все станции</RippleButton><RippleButton onClick={() => handleExportToClipboard('favorites')} disabled={!hasFavorites} className={`w-full py-4 bg-amber-500 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3 disabled:opacity-20`}><Icons.Star /> Только избранное</RippleButton><RippleButton onClick={() => setShowExportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60">Отмена</RippleButton></div></motion.div></div>}</AnimatePresence>
-      <AnimatePresence>{showAboutModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAboutModal(false)} /><motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><Logo className="w-16 h-16 mx-auto mb-4" style={{ color: nativeAccentColor }} /><h2 className="text-2xl font-black mb-1">Radio Player</h2><p className="opacity-40 text-[10px] font-black uppercase tracking-widest mb-6">v{APP_VERSION}</p><div className="space-y-4 text-left bg-black/5 dark:bg-white/5 p-4 rounded-2xl text-xs font-medium opacity-80 mb-6"><p>• Фоновое управление (Экран / Гарнитура)</p><p>• Копирование: Все / Избранное</p><p>• Парсинг M3U (#EXTINF)</p><p>• Тёмная и светлая темы</p></div><RippleButton onClick={() => setShowAboutModal(false)} className="w-full py-4 text-white rounded-2xl font-black shadow-lg" style={{ backgroundColor: nativeAccentColor }}>Закрыть</RippleButton></motion.div></div>}</AnimatePresence>
+      <AnimatePresence>{showExportModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowExportModal(false)} /><motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><h2 className="text-2xl font-black mb-4">Экспорт в буфер</h2><p className="opacity-60 text-sm mb-6 font-medium">Выберите, какие станции скопировать в буфер обмена.</p><div className="space-y-3"><RippleButton onClick={() => handleExportToClipboard('all')} className="w-full py-4 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3 text-base" style={{ backgroundColor: nativeAccentColor }}><Icons.Copy /> Все станции</RippleButton><RippleButton onClick={() => handleExportToClipboard('favorites')} disabled={!hasFavorites} className={`w-full py-4 bg-amber-500 text-white rounded-2xl font-black shadow-lg flex items-center justify-center gap-3 disabled:opacity-20 text-base`}><Icons.Star /> Только избранное</RippleButton><RippleButton onClick={() => setShowExportModal(false)} className="w-full py-4 bg-black/5 dark:bg-white/5 rounded-2xl font-black opacity-60 text-base">Отмена</RippleButton></div></motion.div></div>}</AnimatePresence>
+      <AnimatePresence>{showAboutModal && <div className="fixed inset-0 z-[60] flex items-center justify-center p-6"><motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowAboutModal(false)} /><motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 20, opacity: 0 }} className="relative w-full max-w-sm bg-white dark:bg-[#1c1c1c] rounded-[2.5rem] p-8 shadow-2xl text-center"><Logo className="w-16 h-16 mx-auto mb-4" style={{ color: nativeAccentColor }} /><h2 className="text-2xl font-black mb-1">Radio Player</h2><p className="opacity-40 text-[10px] font-black uppercase tracking-widest mb-6">v{APP_VERSION}</p><div className="space-y-4 text-left bg-black/5 dark:bg-white/5 p-4 rounded-2xl text-xs font-medium opacity-80 mb-6"><p>• Фоновое управление (Экран / Гарнитура)</p><p>• Копирование: Все / Избранное</p><p>• Парсинг M3U (#EXTINF)</p><p>• Тёмная и светлая темы</p></div><RippleButton onClick={() => setShowAboutModal(false)} className="w-full py-4 text-white rounded-2xl font-black shadow-lg text-base" style={{ backgroundColor: nativeAccentColor }}>Закрыть</RippleButton></motion.div></div>}</AnimatePresence>
       <AnimatePresence>{snackbar && <motion.div initial={{ opacity: 0, y: 60 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 60 }} className="fixed bottom-12 left-8 right-8 z-[100] bg-black/95 text-white px-8 py-5 rounded-[2.5rem] font-bold shadow-2xl border border-white/10">{snackbar}</motion.div>}</AnimatePresence>
     </div>
   );
